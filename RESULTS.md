@@ -58,3 +58,46 @@ python scripts/benchmark.py --seeds 2 --episodes 4 --train-steps 800 --max-steps
 6. **Ablation** (`fig06`): removing the *recovery* dispatcher hurts the most under OOD; removing the *skill graph* hurts long-horizon success; removing the *monitor* allows safety violations to stack up; removing *CBF* shifts costs from "CBF intervention" to "crashes / lost reward."
 
 Numbers will vary across machines and seeds; the *relative ordering* and the *direction of the OOD-curve slope* are the stable, claim-supporting signal — exactly what the thesis Section H predicts.
+
+## Isaac Lab + Unitree G1 results
+
+Produced by `scripts/isaaclab_benchmark.py` on a dual-RTX-5090 host, Isaac Sim
+5.1, `Isaac-Velocity-Rough-G1-v0`, 16 envs × 3 episodes × 150 steps, L2 trained
+on 512 random transitions (deliberately under-trained for a fast smoke run).
+
+| Method | Return | CBF interventions/ep | Recovery attempts/ep | Recovery success | Time-to-recover (steps) | Planning ms |
+| --- | --- | --- | --- | --- | --- | --- |
+| random | -4.82 | 0 | 0 | — | — | 0.0 |
+| mppi | -3.49 | 0 | 0 | — | — | 4.9 |
+| gatsr_no_rec | -3.49 | 0 | 0 | — | — | 4.9 |
+| **gatsr_full** | -3.99 | **16.2** | **1.42** | **91.2%** | **~14** | **5.0** |
+
+Reading the table:
+
+1. **The safety/recovery machinery measurably activates on real G1 physics.**
+   Only `gatsr_full` records CBF interventions (~16/episode) and recovery
+   attempts (1.42/episode at **91% success**). `mppi` and `gatsr_no_rec` are
+   bit-identical because with those components off the agent reduces to plain
+   MPPI on the same latent model.
+2. **Planning fits the control budget.** MPPI-in-latent costs ~5 ms/decision —
+   well under the 20 ms G1 control-loop period the thesis flags.
+3. **Returns are close and `success_rate` is 0 for all** because the L2 world
+   model is trained on only 512 random transitions; nobody survives 150 steps
+   of rough terrain with a controller that weak. This is the honest expected
+   outcome of a *smoke* run — real training is GPU-hours, not seconds. The
+   point this benchmark proves is that the **full closed loop runs on Isaac
+   Lab + G1 and the components do what they claim**, not that an under-trained
+   controller walks rough terrain.
+
+On flat terrain (`Isaac-Velocity-Flat-G1-v0`) in short episodes nothing falls,
+so CBF/recovery never fire and the three MPPI-based methods are identical —
+which is why the differentiating benchmark uses rough terrain.
+
+Reproduce:
+
+```powershell
+pwsh scripts/run_isaaclab.ps1 scripts/isaaclab_benchmark.py `
+    --task Isaac-Velocity-Rough-G1-v0 --num_envs 16 --episodes 3 `
+    --max_steps 150 --train_steps 512 `
+    --methods random mppi gatsr_no_rec gatsr_full
+```

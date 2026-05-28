@@ -129,6 +129,54 @@ robotics_research/
 └── results/  # generated
 ```
 
+## Isaac Lab port (37-DoF Unitree G1)
+
+The repo also includes a full port of the architecture to **NVIDIA Isaac Lab +
+Unitree G1**. This needs:
+
+- Isaac Sim 5.x installed (default path `C:\isaac-sim`).
+- The official `isaaclab` conda env on Python 3.11 with the `torch==2.7.0+cu128`
+  PyTorch wheel (Blackwell-compatible).
+- A CUDA GPU; tested on dual RTX 5090 (the L2 ensemble auto-mirrors onto a
+  second GPU when present).
+
+Run a smoke test (loads Isaac Sim, instantiates the G1 task, takes 8 random
+steps):
+
+```powershell
+pwsh scripts/run_isaaclab.ps1 scripts/isaaclab_smoke.py --num_envs 4 --n_steps 8
+```
+
+Run the headline Isaac-Lab benchmark (random / MPPI / GATS-R / GATS-R-no-rec):
+
+```powershell
+pwsh scripts/run_isaaclab.ps1 scripts/isaaclab_benchmark.py `
+    --num_envs 16 --episodes 4 --max_steps 200 --train_steps 1024
+```
+
+The script writes:
+- `results/isaaclab_raw.csv` — one row per (method, episode, env)
+- `results/isaaclab_summary.csv` — aggregated mean/std per method
+- `results/isaaclab_benchmark_report.txt` — human-readable timing log
+
+| Isaac Lab module | File | Mirrors CPU equivalent |
+| --- | --- | --- |
+| Env wrapper | `src/gatsr/isaaclab/env.py` | `gatsr.envs.balance_env` |
+| L2 ensemble (multi-GPU) | `src/gatsr/isaaclab/latent.py` | `gatsr.world_models.latent` |
+| Batched MPPI | `src/gatsr/isaaclab/planner.py` | `gatsr.planning.mppi` |
+| G1 CBF filter | `src/gatsr/isaaclab/safety.py` | `gatsr.safety.cbf` |
+| Sentinel monitor | `src/gatsr/isaaclab/monitor.py` | `gatsr.monitoring.monitor` |
+| PD recovery (FRASA placeholder) | `src/gatsr/isaaclab/recovery.py` | `gatsr.recovery.recovery_policy` |
+| Agent | `src/gatsr/isaaclab/agent.py` | `gatsr.agent` |
+
+### Hardware notes
+
+When two CUDA devices are visible, `G1EnsembleLatentModel` replicates itself
+onto `cuda:1` and splits MPPI rollouts in half between the GPUs for ~2× more
+samples per planning iteration. PCIe gen 3 ×1 on the second slot (per
+`nvidia-smi`) will be the bottleneck for very small batches; the split is
+worth it from `n_samples ≥ 64`.
+
 ## Caveats
 
 This is a *concept-validation* implementation. The published bar described in

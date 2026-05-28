@@ -37,6 +37,10 @@ Thumbs.db
 results/raw.csv
 results/summary.csv
 results/figures/
+results/isaaclab_raw.csv
+results/isaaclab_summary.csv
+results/isaaclab_benchmark_report.txt
+results/isaaclab_smoke_report.txt
 
 # --- Logs / scratch --------------------------------------------------------
 *.log
