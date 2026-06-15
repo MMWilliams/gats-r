@@ -19,7 +19,7 @@ bench:
 	$(PY) scripts/benchmark.py --seeds 3 --episodes 10
 
 bench-fast:
-	$(PY) scripts/benchmark.py --seeds 2 --episodes 4 --train-steps 800 --max-steps 150
+	$(PY) scripts/benchmark.py --seeds 1 --episodes 4 --train-steps 1200 --max-steps 300
 
 bench-full:
 	$(PY) scripts/benchmark.py --seeds 5 --episodes 20

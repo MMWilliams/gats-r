@@ -44,11 +44,16 @@ python scripts/verify_claims.py                        # asserts the findings
 ```
 
 `--seeds 3 --episodes 10` takes ~45 min on one Ryzen-9-9900X core (CPU torch).
-To trim to a ~5 min smoke run:
+For a quick smoke run (~6 min) that still solves the task (keep `--max-steps
+300`; shorter episodes cannot reach all three goals, so success would read 0):
 
 ```bash
-python scripts/benchmark.py --seeds 2 --episodes 4 --train-steps 800 --max-steps 150
+python scripts/benchmark.py --seeds 1 --episodes 4 --train-steps 1200 --max-steps 300
+# observed: lqr 0.75, gatsr_full 0.58, gatsr_no_layered 0.00, learned baselines 0.00
 ```
+
+For the fastest proof-of-claims without the full sweep, use
+`python scripts/verify_claims.py` (~2 min).
 
 ## Headline numbers (`--seeds 3 --episodes 10`, n=30 per cell)
 

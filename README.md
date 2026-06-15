@@ -30,8 +30,9 @@ python scripts/verify_claims.py
 # 4. run the full benchmark (10 methods x 3 seeds x 3 OOD levels x 10 episodes
 #    = 990 episodes; ~45 min on a Ryzen 9 9900X CPU core)
 python scripts/benchmark.py --seeds 3 --episodes 10
-#    ...or a fast smoke version (~5 min):
-python scripts/benchmark.py --seeds 2 --episodes 4 --train-steps 800 --max-steps 150
+#    ...or a smaller smoke version (~6 min) that still solves the task (keep
+#    max-steps at 300 — shorter episodes can't reach all 3 goals):
+python scripts/benchmark.py --seeds 1 --episodes 4 --train-steps 1200 --max-steps 300
 
 # 5. generate all figures from the results
 python scripts/make_figures.py
