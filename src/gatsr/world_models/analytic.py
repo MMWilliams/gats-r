@@ -13,9 +13,10 @@ of validity.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import numpy as np
+from scipy.linalg import solve_continuous_are
 
 from ..envs.balance_env import GRAVITY, DT
 
@@ -26,7 +27,14 @@ class AnalyticModel:
     mass_pole: float = 0.1
     pole_length: float = 0.5
     dt: float = DT
-    validity_angle: float = 0.25  # rad — beyond this, L1's linearization is unreliable
+    validity_angle: float = 0.5  # rad — beyond ~0.5 rad the cart-pole linearization degrades
+    # Goal-tracking LQR weights. Cart-position weight is deliberately higher
+    # than the recovery stabilizer's so the controller actually drives the cart
+    # to each goal setpoint (not just balance at the origin).
+    q_diag: tuple[float, ...] = (20.0, 1.0, 30.0, 5.0)
+    r_weight: float = 0.1
+    action_scale: float = 12.0
+    _K: np.ndarray | None = field(default=None, repr=False, compare=False)
 
     def predict(self, state: np.ndarray, action: np.ndarray) -> np.ndarray:
         """One-step prediction. State is the 4-D physical state."""
@@ -74,6 +82,44 @@ class AnalyticModel:
             return traj
         else:
             raise ValueError(f"actions ndim must be 2 or 3, got {actions.ndim}")
+
+    # ----- analytic control (L1 goal-tracking LQR) -----------------------
+
+    def _gain(self) -> np.ndarray:
+        """Time-invariant LQR gain on the linearized cart-pole."""
+        if self._K is not None:
+            return self._K
+        l = self.pole_length
+        mp, mc = self.mass_pole, self.mass_cart
+        total = mc + mp
+        A = np.array(
+            [
+                [0.0, 1.0, 0.0, 0.0],
+                [0.0, 0.0, -mp * GRAVITY / total, 0.0],
+                [0.0, 0.0, 0.0, 1.0],
+                [0.0, 0.0, total * GRAVITY / (l * mc), 0.0],
+            ]
+        )
+        B = np.array([[0.0], [1.0 / total], [0.0], [-1.0 / (l * mc)]])
+        Q = np.diag(self.q_diag)
+        R = np.array([[self.r_weight]])
+        P = solve_continuous_are(A, B, Q, R)
+        self._K = np.linalg.inv(R) @ B.T @ P  # (1, 4)
+        return self._K
+
+    def control(self, state: np.ndarray, goal_x: float = 0.0) -> np.ndarray:
+        """Goal-tracking LQR action in [-1, 1].
+
+        Regulates the state to the setpoint [goal_x, 0, 0, 0], i.e. drive the
+        cart to the goal while keeping the pole upright. This is L1's *control*
+        counterpart to its `predict`/`validity` interface, used by the agent
+        whenever L1 is in its domain of validity."""
+        K = self._gain()
+        s = np.asarray(state[:4], dtype=np.float64).reshape(4, 1)
+        s_ref = np.array([[float(goal_x)], [0.0], [0.0], [0.0]])
+        u = float(-(K @ (s - s_ref)).reshape(-1)[0])
+        a = float(np.clip(u / self.action_scale, -1.0, 1.0))
+        return np.array([a])
 
     def validity(self, state: np.ndarray) -> float:
         """[0,1] score; 1 = in domain of linearization, 0 = far OOD.

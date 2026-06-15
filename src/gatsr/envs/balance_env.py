@@ -189,7 +189,7 @@ class BalanceBotEnv:
     def _integrate(
         self, action: np.ndarray, recovery: bool
     ) -> Tuple[np.ndarray, float, bool, dict]:
-        a = float(np.clip(action, -1.0, 1.0)) * self.cfg.action_scale
+        a = float(np.clip(np.asarray(action).reshape(-1)[0], -1.0, 1.0)) * self.cfg.action_scale
 
         # actuator noise + impulsive disturbance
         noise = self.cfg.base_force_noise * (1.0 + 2.0 * self.cfg.ood_level)

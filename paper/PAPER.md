@@ -4,7 +4,7 @@
 
 *Reese (M. M. Williams)*[^author] · 
 
-[^author]: Repository: <https://github.com/MMWilliams/gatsr>. Correspondence: maureesewilliams@gmail.com.
+[^author]: Repository: <https://github.com/MMWilliams/gats-r>. Correspondence: maureesewilliams@gmail.com.
 
 ---
 
@@ -19,18 +19,22 @@ runtime monitor** that fuses ensemble disagreement with temporal-consistency
 and safe-stoppability, a **CBF-RL-style safety filter** internalised during
 training, and a **graph-indexed recovery dispatcher** routed through the same
 skill graph. We implement every component twice: as a self-contained CPU
-reference on a custom *BalanceBot* task (≤3 s per benchmark, 59-test suite),
-and as a GPU-batched Isaac Lab port driving the 37-DoF Unitree G1 humanoid on
-a dual-RTX-5090 host. On BalanceBot, GATS-R variants record 70%+ recovery
-success rates while MPPI / Dreamer-lite / TD-MPC2-lite baselines never
-attempt a recovery; on Isaac Lab G1 rough-terrain, only the full GATS-R
-configuration triggers the CBF and recovery dispatcher (16.2 interventions
-and 1.42 recovery attempts per episode at 91.2% success), at 5 ms/decision
-— well within the 20 ms control-loop budget. We make no claim that the
-under-trained policy walks rough terrain; the contribution is the *integration*,
-the *reproducible interfaces*, and the *measurable activation* of each safety
-layer on real humanoid physics. All code, configs, and exact reproduce
-commands are open-sourced.
+reference on a custom *BalanceBot* task (59-test suite, ~45 min full benchmark
+on one CPU core), and as a GPU-batched Isaac Lab port driving the 37-DoF
+Unitree G1 humanoid on a dual-RTX-5090 host. On BalanceBot, the layered
+controller solves the multi-goal task — the analytic L1 layer reaches 0.88
+episode success and the full GATS-R agent 0.64, while pure model-based-learning
+baselines (MPPI / TD-MPC2-lite / Dreamer-lite) reach 0.00 at the deliberately
+minimal CPU training budget; an ablation that disables the L1 layer collapses
+GATS-R to 0.00, confirming the layered selector is load-bearing. On Isaac Lab
+G1 rough-terrain, only the full GATS-R configuration triggers the CBF and
+recovery dispatcher (16.2 interventions and 1.42 recovery attempts per episode
+at 91.2% recovery success), at 5 ms/decision — well within the 20 ms
+control-loop budget. We make no claim that the under-trained G1 policy walks
+rough terrain; the contribution is the *integration*, the *reproducible
+interfaces*, and the *measurable activation* of each architectural layer. All
+code, configs, committed result data, and exact reproduce commands are
+open-sourced, and a one-line `verify_claims.py` asserts each finding.
 
 ---
 
@@ -59,11 +63,13 @@ We instead deliver three engineering contributions whose value is their
    out-of-distribution (OOD) states to dedicated controllers (LQR for the toy
    task, a PD stand-up placeholder for the G1, with a clean interface for
    FRASA/FIRM/Get-Up-Across-Morphologies replacements).
-3. **Two reproducible implementations** — a 3-second CPU benchmark on a custom
-   *BalanceBot* task that runs all 6 methods × 3 seeds × 3 OOD levels, and a
-   GPU-batched Isaac Lab port driving the Unitree G1 with the **closed loop
-   verified end-to-end** (CBF activations, recovery attempts and successes,
-   planning-latency budget) on the *Isaac-Velocity-Rough-G1-v0* task.
+3. **Two reproducible implementations** — a CPU benchmark on a custom
+   *BalanceBot* task that runs all methods × 3 seeds × 3 OOD levels (≈45 min on
+   one CPU core), and a GPU-batched Isaac Lab port driving the Unitree G1 with
+   the **closed loop verified end-to-end** (CBF activations, recovery attempts
+   and successes, planning-latency budget) on the *Isaac-Velocity-Rough-G1-v0*
+   task. Both ship committed reference result data and a `verify_claims.py`
+   gate.
 
 Our claim is deliberately narrow: **the integration runs, the components do
 what they claim, the metrics are inspectable, and the reproduce commands
@@ -235,9 +241,10 @@ stochastic disturbances (push impulses, payload mass jitter, friction
 noise, sensor noise). State is 7-D, action is 1-D continuous force. The
 environment exposes a separate `recover_step()` channel that mirrors the
 FRASA-style "safe set" assumption for recovery edges. Three OOD levels
-(0.0 / 0.5 / 1.0) scale every perturbation source jointly. All six
-methods, three seeds, three OOD levels, ten episodes each run in roughly
-5 minutes on a single core.
+(0.0 / 0.5 / 1.0) scale every perturbation source jointly. All ten
+methods (six GATS-R configurations + four baselines), three seeds, three
+OOD levels, ten episodes each run in roughly 45 minutes on a single core
+(a ~5-minute smoke configuration is provided via reduced seeds/steps).
 
 ### 4.2 Isaac Lab G1 port
 
@@ -276,35 +283,53 @@ benchmark logic can drive either world.
 
 ### 5.1 BalanceBot CPU benchmark
 
-Six methods (random, LQR analytic, MPPI in L2, TD-MPC2-lite with value
-bootstrap, Dreamer-lite RSSM, full GATS-R), two seeds × five episodes per
-OOD level — 5 minutes wall-clock total.
+Ten methods (random; LQR = the analytic L1 controller; MPPI in L2;
+TD-MPC2-lite with a value head fit on real Monte-Carlo returns; Dreamer-lite
+RSSM with an imagination-trained actor; full GATS-R; and five ablations),
+3 seeds × 10 episodes per OOD level (n = 30 per cell), ~45 min on one
+Ryzen-9-9900X core. Values below are means over the three OOD levels;
+per-OOD breakdowns are in `results/summary.csv`.
 
-| Method | Return (mean) | Recovery success | CBF interventions / ep | Planning ms |
-| --- | ---: | ---: | ---: | ---: |
-| random | -71.4 | n/a | n/a | 0.0 |
-| LQR (analytic) | **+250.8** | n/a | 0 | 0.0 |
-| MPPI (L2 only) | -74.9 | n/a | n/a | 12.0 |
-| TD-MPC2-lite | -74.8 | n/a | n/a | 12.0 |
-| Dreamer-lite | -69.5 | n/a | n/a | 0.1 |
-| GATS-R (full) | -8.5 | **70.4%** | 41.2 | 22.8 |
-| GATS-R no graph | -13.7 | 65.8% | 41.0 | 23.0 |
-| GATS-R no recovery | -3.4 | n/a | 38.3 | 23.0 |
-| GATS-R no monitor | -3.4 | n/a | 39.4 | 22.9 |
-| GATS-R no CBF | +25.8 | 75.5% | 0 | 22.9 |
+| Method | Success | Return | Recovery att./ep | Recovery success | CBF interv./ep | Planning ms |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| random | 0.00 | -62.9 | 0.00 | — | 0.0 | 0.0 |
+| MPPI (L2 only) | 0.00 | -54.1 | 0.00 | — | 0.0 | 18.1 |
+| TD-MPC2-lite | 0.00 | -45.1 | 0.00 | — | 0.0 | 18.0 |
+| Dreamer-lite | 0.00 | -61.4 | 0.00 | — | 0.0 | 0.1 |
+| **LQR (= L1)** | **0.88** | **+269.7** | 0.00 | — | 0.0 | 0.0 |
+| **GATS-R (full)** | **0.64** | +220.6 | 0.36 | 0.00 | 24.3 | 26.7 |
+| GATS-R no layered (L1 off) | 0.00 | -0.5 | 2.54 | 0.60 | 40.1 | 24.3 |
+| GATS-R no graph | 0.64 | +221.1 | 0.36 | 0.00 | 24.5 | 29.4 |
+| GATS-R no recovery | 0.64 | +220.6 | 0.00 | — | 23.3 | 27.5 |
+| GATS-R no monitor | 0.64 | +220.6 | 0.36 | 0.00 | 24.3 | 27.5 |
+| GATS-R no CBF | 0.79 | +253.0 | 0.21 | 0.00 | 0.0 | 29.9 |
 
-**Findings.** (i) LQR analytic wins absolute return — expected on a
-linearisable task, and exactly why we keep it as L1 in the layered scheme.
-(ii) GATS-R variants are the only methods that trigger recoveries at all,
-at 65–75% success rate. (iii) Removing CBF *raises* return at 0-OOD
-(the agent is freer to chase reward without projection) but at OOD = 1.0
-it pays back via more crashes (visible in the no-CBF ablation row's
-spread). (iv) MCTS-based planning sits at ~23 ms, slightly above the
-20 ms G1 control-loop reference — the expected outcome the parent thesis
-flagged and we explicitly mark as a follow-up.
+**Findings.** (i) The analytic L1 controller (LQR) wins on this linearisable
+task (0.88 success, +270 return) — exactly why the architecture keeps it as
+L1; GATS-R inherits most of that performance through its layered selector
+(0.64). (ii) The pure model-based-learning baselines fail outright (0.00
+success) at this deliberately minimal CPU training budget (2000 random
+transitions): MPPI/TD-MPC2-lite plan through an L2 that is too inaccurate to
+drive the cart to goals, and Dreamer-lite's imagination actor — though now
+genuinely trained — cannot either. This is the honest, expected result and the
+motivation for the analytic prior. (iii) **The layered L1 selector is
+load-bearing**: the `no layered` ablation, which forces planning through L2
+everywhere, collapses success to 0.00 — the single largest ablation effect.
+(iv) CBF is a *safety-vs-performance trade-off*, not a free win: turning it off
+*raises* success and return (0.79 / +253) because the policy is unconstrained;
+its value is the ~24 interventions/episode it makes on unsafe proposed actions,
+which matters on the G1 (§5.2), not on this benign cart-pole. (v) Graph,
+monitor, and recovery are within noise of full here — once L1 holds the pole
+upright the monitor rarely flags OOD and recovery rarely fires (and the few
+attempts do not complete within the episode, hence 0.00 recovery success). The
+recovery layer is exercised meaningfully in the `no layered` ablation
+(2.5 attempts/ep at 0.60 success) and on the G1 (§5.2). (vi) MCTS planning sits
+at ~27 ms/decision, above the 20 ms G1 control-loop budget — flagged as
+follow-up.
 
-Full robustness curves vs OOD level and per-ablation panels are in
-`results/figures/`; we omit the figures here for brevity.
+Robustness curves vs OOD and per-ablation panels are in `results/figures/`
+(`fig01`–`fig06`); `scripts/verify_claims.py` turns findings (i)–(v) plus
+per-seed determinism into automated assertions.
 
 ### 5.2 Isaac Lab G1 closed-loop validation
 
@@ -405,7 +430,7 @@ follow-up would compare against.
 GATS-R is an *integration*: layered world models + skill graph +
 continuous MCTS + Sentinel monitor + CBF-RL safety + graph-indexed
 recovery, closed into a single loop on continuous robot control. We
-release a 5-minute CPU reference benchmark with full ablations and a
+release a CPU reference benchmark with full ablations and a
 GPU-batched Isaac Lab port that drives the 37-DoF Unitree G1 humanoid
 end-to-end, with every architectural component verifiably activating on
 real humanoid physics. The contribution is not a benchmark-beating
@@ -419,10 +444,11 @@ parent thesis lays out.
 All experiments in this paper are reproducible from a fresh clone:
 
 ```bash
-git clone https://github.com/MMWilliams/gatsr.git
-cd gatsr && pip install -r requirements.txt
-pytest -q                                                 # 59 tests, 3 s
-python scripts/benchmark.py --seeds 3 --episodes 10       # CPU table (§5.1)
+git clone https://github.com/MMWilliams/gats-r.git
+cd gats-r && pip install -r requirements.txt && pip install -e .
+pytest -q                                                 # 59 tests, ~4 s
+python scripts/verify_claims.py                           # asserts §5.1 findings, ~2 min
+python scripts/benchmark.py --seeds 3 --episodes 10       # CPU table (§5.1), ~45 min
 python scripts/make_figures.py                            # 6 figures
 ```
 
@@ -443,8 +469,10 @@ scripts\run_isaaclab.bat scripts\isaaclab_visualize.py ^
     --train_steps 512 --run_steps 3000
 ```
 
-Total CPU benchmark wall-clock: 5 min. Total Isaac Lab benchmark
-wall-clock: ~8 min. All metrics are deterministic per `--seed`.
+Total CPU benchmark wall-clock: ~45 min (`--seeds 3 --episodes 10`; a
+~5 min smoke config is provided). Total Isaac Lab benchmark wall-clock:
+~8 min. Substantive metrics are deterministic per `--seed` on a given
+machine (the `planning_ms` timing column aside).
 
 ## Acknowledgements
 
@@ -524,4 +552,4 @@ Epistemic Uncertainty Heads.* arXiv 2504.16680, ETH Zürich 2025.
 
 ---
 
-*Repository:* <https://github.com/MMWilliams/gatsr>
+*Repository:* <https://github.com/MMWilliams/gats-r>

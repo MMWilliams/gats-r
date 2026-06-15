@@ -1,4 +1,4 @@
-.PHONY: install test demo bench figures all clean
+.PHONY: install test verify demo bench figures all clean
 
 PY ?= python
 
@@ -8,6 +8,9 @@ install:
 
 test:
 	$(PY) -m pytest -q
+
+verify:
+	$(PY) scripts/verify_claims.py
 
 demo:
 	$(PY) scripts/demo.py
@@ -24,7 +27,7 @@ bench-full:
 figures:
 	$(PY) scripts/make_figures.py
 
-all: test bench figures
+all: test verify bench figures
 
 clean:
 	rm -rf results/raw.csv results/summary.csv results/figures/

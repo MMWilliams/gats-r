@@ -8,7 +8,7 @@ from __future__ import annotations
 import numpy as np
 
 from ..envs.balance_env import BalanceBotEnv
-from ..recovery.recovery_policy import LQRRecoveryPolicy, RecoveryConfig
+from ..world_models.analytic import AnalyticModel
 
 
 class LQRAgent:
@@ -16,12 +16,14 @@ class LQRAgent:
 
     def __init__(self, env: BalanceBotEnv, seed: int = 0):
         self.env = env
-        self.policy = LQRRecoveryPolicy(
-            RecoveryConfig(
-                pole_length=env.cfg.pole_length,
-                mass_pole=env.cfg.mass_pole,
-                mass_cart=env.cfg.mass_cart,
-            )
+        # The LQR baseline is exactly the layered model's L1 controller: a
+        # goal-tracking LQR on the linearized cart-pole. This makes "LQR" and
+        # "GATS-R's L1 layer" the same code, so the ablation isolates what the
+        # graph/monitor/recovery/L2 layers add on top of L1.
+        self.policy = AnalyticModel(
+            mass_cart=env.cfg.mass_cart,
+            mass_pole=env.cfg.mass_pole,
+            pole_length=env.cfg.pole_length,
         )
         self.seed = seed
 
@@ -34,11 +36,8 @@ class LQRAgent:
             steps = 0
             while not done:
                 ps = self.env.physical_state
-                # bias toward current goal by shifting reference x
                 goal_x = self.env.current_goal()
-                ps_shifted = ps.copy()
-                ps_shifted[0] = ps[0] - goal_x
-                a = self.policy(ps_shifted)
+                a = self.policy.control(ps, goal_x=goal_x)
                 _obs, r, done, info = self.env.step(a)
                 ep_return += r
                 steps += 1

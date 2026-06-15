@@ -47,7 +47,7 @@ class CBFSafetyFilter:
     def __call__(self, state: np.ndarray, action: np.ndarray) -> tuple[np.ndarray, bool, float]:
         if not self.cfg.enabled:
             return action, False, 0.0
-        a = float(np.clip(action, -1.0, 1.0))
+        a = float(np.clip(np.asarray(action).reshape(-1)[0], -1.0, 1.0))
         # Pre-evaluate the constraints at the current action
         if self._is_safe(state, np.array([a])):
             return np.array([a]), False, 0.0

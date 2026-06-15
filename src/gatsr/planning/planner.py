@@ -49,6 +49,9 @@ class HybridPlanner:
         self.rng = np.random.default_rng(cfg.seed)
         self._current_subgoal_idx: Optional[int] = None
         self._current_path: List[int] = []
+        # When the skill graph is ablated, the planner drives straight to the
+        # raw goal instead of routing through landmark nodes.
+        self._direct_subgoal_phys: Optional[np.ndarray] = None
         self._cost_subgoal = (
             cost_for_subgoal
             if cost_for_subgoal is not None
@@ -61,11 +64,20 @@ class HybridPlanner:
     # --- subgoal selection ----------------------------------------------
 
     def set_goal_physical(self, physical_state: np.ndarray, target_physical: np.ndarray) -> List[int]:
+        self._direct_subgoal_phys = None
         start = self.graph.nearest_physical(physical_state)
         goal = self.graph.nearest_physical(target_physical)
         self._current_path = self.graph.shortest_path(start, goal)
         self._current_subgoal_idx = 1 if len(self._current_path) > 1 else 0
         return self._current_path
+
+    def set_goal_direct(self, target_physical: np.ndarray) -> None:
+        """Skill-graph-free goal setting: aim the inner loop straight at the raw
+        target, bypassing landmark routing entirely (used by the no-graph
+        ablation)."""
+        self._direct_subgoal_phys = np.asarray(target_physical, dtype=np.float64)
+        self._current_path = []
+        self._current_subgoal_idx = None
 
     def route_to_recovery(self, physical_state: np.ndarray) -> List[int]:
         start = self.graph.nearest_physical(physical_state)
@@ -75,6 +87,13 @@ class HybridPlanner:
         return self._current_path
 
     def current_subgoal(self) -> Optional[SkillNode]:
+        if self._direct_subgoal_phys is not None:
+            return SkillNode(
+                idx=-1,
+                latent=np.zeros(1),
+                physical=self._direct_subgoal_phys,
+                description="direct_goal",
+            )
         if not self._current_path:
             return None
         i = min(self._current_subgoal_idx or 0, len(self._current_path) - 1)

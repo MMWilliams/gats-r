@@ -66,23 +66,41 @@ METHOD_LIST = [
     "gatsr_no_recovery",
     "gatsr_no_monitor",
     "gatsr_no_cbf",
+    "gatsr_no_layered",
 ]
 
 
-def collect_random_data(env: BalanceBotEnv, n_steps: int, seed: int):
+def collect_random_data(env: BalanceBotEnv, n_steps: int, seed: int, discount: float = 0.97):
+    """Roll random actions; return (states, actions, next_states, returns_to_go).
+
+    `returns_to_go` are discounted Monte-Carlo returns computed per episode,
+    used as honest regression targets for the TD-MPC2-lite value head (instead
+    of a placeholder)."""
     rng = np.random.default_rng(seed)
-    s, a, sp = [], [], []
+    s, a, sp, r, done_flags = [], [], [], [], []
     obs = env.reset(seed=seed)
     for _ in range(n_steps):
         ps = env.physical_state
         act = rng.uniform(-1.0, 1.0, size=(1,))
-        env.step(act)
+        _o, rew, done, _i = env.step(act)
         s.append(ps)
         a.append(act)
         sp.append(env.physical_state)
-        if env.is_crashed() or env.t >= env.cfg.max_steps - 1:
+        r.append(rew)
+        boundary = bool(done or env.is_crashed() or env.t >= env.cfg.max_steps - 1)
+        done_flags.append(boundary)
+        if boundary:
             env.reset(seed=int(rng.integers(0, 2**31 - 1)))
-    return np.array(s), np.array(a), np.array(sp)
+    # discounted returns-to-go, reset at episode boundaries
+    r = np.asarray(r, dtype=np.float64)
+    returns = np.zeros_like(r)
+    running = 0.0
+    for i in range(len(r) - 1, -1, -1):
+        if done_flags[i]:
+            running = 0.0
+        running = r[i] + discount * running
+        returns[i] = running
+    return np.array(s), np.array(a), np.array(sp), returns
 
 
 def train_latent(states, actions, next_states, seed: int) -> EnsembleLatentModel:
@@ -143,6 +161,8 @@ def make_agent(name: str, env: BalanceBotEnv, latent: EnsembleLatentModel, graph
         cfg_kwargs["use_monitor"] = False
     elif name == "gatsr_no_cbf":
         cfg_kwargs["use_cbf"] = False
+    elif name == "gatsr_no_layered":
+        cfg_kwargs["use_layered"] = False
     else:
         raise ValueError(name)
     return GATSRAgent(AgentConfig(**cfg_kwargs), env, latent_model=latent, skill_graph=graph)
@@ -161,11 +181,12 @@ def run(args: argparse.Namespace) -> None:
     print("[train] preparing shared L2 model and skill graph per seed ...")
     for seed in range(args.seeds):
         env = BalanceBotEnv(BalanceBotConfig(max_steps=200, n_goals=3, seed=seed))
-        states, actions, next_states = collect_random_data(env, n_steps=args.train_steps, seed=seed)
+        states, actions, next_states, returns = collect_random_data(
+            env, n_steps=args.train_steps, seed=seed
+        )
         latent = train_latent(states, actions, next_states, seed=seed)
         graph = build_skill_graph(latent, states, seed=seed)
-        # quick value-head fit for td_mpc2_lite — Monte-Carlo returns from data
-        returns = np.linspace(0, 1, len(states))  # placeholder shaping; irrelevant since planner reuses cost
+        # td_mpc2_lite value head is fit on real discounted MC returns (above)
         seed_caches[seed] = dict(
             latent=latent,
             graph=graph,

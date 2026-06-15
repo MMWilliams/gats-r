@@ -8,7 +8,7 @@ Run via the helper at scripts/run_isaaclab.ps1, or manually with env vars set:
     $env:ISAAC_PATH    = "C:\\isaac-sim"
     $env:PYTHONPATH    = "C:\\isaac-sim\\site"
     & "C:\\Users\\reese\\miniconda3\\envs\\isaaclab\\python.exe" `
-        C:\\Users\\reese\\Downloads\\robotics_research\\scripts\\isaaclab_smoke.py
+        scripts\\isaaclab_smoke.py
 """
 
 from __future__ import annotations
@@ -16,6 +16,7 @@ from __future__ import annotations
 import argparse
 import sys
 import time
+from pathlib import Path
 
 from isaaclab.app import AppLauncher
 
@@ -41,7 +42,7 @@ import isaaclab_tasks  # noqa: F401, E402  (registers gym IDs)
 from isaaclab_tasks.utils import parse_env_cfg  # noqa: E402
 
 
-REPORT_PATH = r"C:\Users\reese\Downloads\robotics_research\results\isaaclab_smoke_report.txt"
+REPORT_PATH = str(Path(__file__).resolve().parents[1] / "results" / "isaaclab_smoke_report.txt")
 
 
 def _log(msg: str) -> None:

@@ -20,7 +20,7 @@ This file documents *which* metrics the benchmark produces and *how to read them
 
 | Column | Meaning | Notes |
 | --- | --- | --- |
-| `method` | one of `random`, `lqr`, `mppi`, `td_mpc2_lite`, `dreamer_lite`, `gatsr_full`, `gatsr_no_graph`, `gatsr_no_recovery`, `gatsr_no_monitor`, `gatsr_no_cbf` | |
+| `method` | one of `random`, `lqr`, `mppi`, `td_mpc2_lite`, `dreamer_lite`, `gatsr_full`, `gatsr_no_layered`, `gatsr_no_graph`, `gatsr_no_recovery`, `gatsr_no_monitor`, `gatsr_no_cbf` | |
 | `seed` | random seed for env + model + planner | |
 | `ood_level` | `0.0` (in-dist) / `0.5` (mid) / `1.0` (heavy) | scales push prob, push strength, dynamics jitter, friction noise |
 | `episode` | episode index within (method, seed, ood_level) | |
@@ -34,30 +34,79 @@ This file documents *which* metrics the benchmark produces and *how to read them
 | `time_to_recover` | mean env-steps between recovery start and end (per episode) | -1 if no recovery occurred |
 | `planning_ms` | mean wall-clock ms per decision | for comparison vs. 20 ms G1 control-loop reference |
 
-## Reproducing the published-style summary
+## Reproducing the summary
 
 ```bash
-# the default seeds × episodes recommended for a CoRL-style summary table
-python scripts/benchmark.py --seeds 5 --episodes 20
+# the documented configuration for the tables/figures below
+python scripts/benchmark.py --seeds 3 --episodes 10   # ~45 min, 990 episodes
 python scripts/make_figures.py
+python scripts/verify_claims.py                        # asserts the findings
 ```
 
-This takes ~10–20 min on a modern laptop CPU. To trim further:
+`--seeds 3 --episodes 10` takes ~45 min on one Ryzen-9-9900X core (CPU torch).
+To trim to a ~5 min smoke run:
 
 ```bash
 python scripts/benchmark.py --seeds 2 --episodes 4 --train-steps 800 --max-steps 150
 ```
 
-## Expected qualitative findings
+## Headline numbers (`--seeds 3 --episodes 10`, n=30 per cell)
 
-1. **Robustness curve** (`fig01`): GATS-R degrades the most gracefully as OOD level rises; baselines like Random/MPPI drop sharply.
-2. **Return** (`fig02`): GATS-R ≥ TD-MPC2-lite ≥ MPPI ≥ LQR ≥ Dreamer-lite ≥ Random on this toy task.
-3. **Safety** (`fig03`): CBF activations are highest under OOD (the policy *wants* to do unsafe things more often); `gatsr_no_cbf` records zero violations because the filter is off — but it *crashes* more (visible in success / return drop).
-4. **Recovery** (`fig04`): GATS-R variants attempt recoveries and succeed at a high rate; baselines without a recovery layer never attempt recoveries (`-1` reported for time-to-recover).
-5. **Planning latency** (`fig05`): GATS-R (with MCTS) is the slowest at ~20 ms; MPPI ~10 ms; LQR ~0 ms.
-6. **Ablation** (`fig06`): removing the *recovery* dispatcher hurts the most under OOD; removing the *skill graph* hurts long-horizon success; removing the *monitor* allows safety violations to stack up; removing *CBF* shifts costs from "CBF intervention" to "crashes / lost reward."
+Mean over the three OOD levels. Full per-OOD breakdown is in `results/summary.csv`.
 
-Numbers will vary across machines and seeds; the *relative ordering* and the *direction of the OOD-curve slope* are the stable, claim-supporting signal — exactly what the thesis Section H predicts.
+| Method | Success | Return | CBF interv./ep | Recovery att./ep | Recovery success | Planning ms |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| random | 0.00 | -62.9 | 0.0 | 0.00 | — | 0.0 |
+| mppi (L2 only) | 0.00 | -54.1 | 0.0 | 0.00 | — | 18.1 |
+| td_mpc2_lite | 0.00 | -45.1 | 0.0 | 0.00 | — | 18.0 |
+| dreamer_lite | 0.00 | -61.4 | 0.0 | 0.00 | — | 0.1 |
+| **lqr (= L1)** | **0.88** | **269.7** | 0.0 | 0.00 | — | 0.0 |
+| **gatsr_full** | **0.64** | 220.6 | 24.3 | 0.36 | 0.00 | 26.7 |
+| gatsr_no_layered | 0.00 | -0.5 | 40.1 | 2.54 | 0.60 | 24.3 |
+| gatsr_no_graph | 0.64 | 221.1 | 24.5 | 0.36 | 0.00 | 29.4 |
+| gatsr_no_recovery | 0.64 | 220.6 | 23.3 | 0.00 | — | 27.5 |
+| gatsr_no_monitor | 0.64 | 220.6 | 24.3 | 0.36 | 0.00 | 27.5 |
+| gatsr_no_cbf | 0.79 | 253.0 | 0.0 | 0.21 | 0.00 | 29.9 |
+
+## Findings (what the data actually shows)
+
+1. **The task is solved by the analytic methods, not the learned ones**
+   (`fig01`/`fig02`). LQR (the L1 layer) reaches 0.88 success; GATS-R reaches
+   0.64; the pure model-based-learning baselines (MPPI, TD-MPC2-lite,
+   Dreamer-lite) sit at **0.00** — with only 2000 random transitions of CPU
+   training they cannot drive the cart to goals while balancing. This is the
+   honest, expected outcome and is exactly why the architecture keeps an
+   analytic L1 prior.
+2. **Graceful degradation** (`fig01`): GATS-R declines smoothly with OOD
+   (0.70 → 0.63 → 0.60); LQR is near-flat (0.90 → 0.90 → 0.83). The learned
+   baselines are flat at zero (nothing to degrade).
+3. **The layered L1 selector is load-bearing** (`fig06`, `gatsr_no_layered`):
+   turning L1 off — so the agent always plans through the under-trained L2 —
+   collapses success to **0.00** and return to ~0. This is the single largest
+   ablation effect and validates the central architectural choice.
+4. **CBF is a safety-vs-performance trade-off, not a free win** (`fig03`,
+   `gatsr_no_cbf`): with the filter off, success/return *increase*
+   (0.79 / +253 vs 0.64 / +220) and CBF interventions drop to 0 — the policy is
+   freer. The filter is conservative; its value is the ~24 interventions/episode
+   it makes on the unsafe actions the planner proposes, which matters on the
+   G1 (below), not on this benign cart-pole.
+5. **Graph / monitor / recovery are largely dormant on this benign task.**
+   `no_graph`, `no_monitor`, and `no_recovery` are within noise of full
+   (0.64 success, ~220 return); `no_monitor` is bit-identical to full. Once L1
+   keeps the pole upright, the monitor rarely flags OOD and recovery rarely
+   fires (0.36 attempts/ep, and those that fire do not complete within the
+   episode → 0.00 recovery success). The recovery dispatcher's effectiveness is
+   demonstrated where it is actually exercised: the Isaac-Lab G1 (91% below) and
+   the `no_layered` ablation (0.60 recovery success, where the agent tilts
+   constantly and recovery fires ~2.5×/episode).
+6. **Planning latency** (`fig05`): GATS-R's MCTS inner loop is the slowest at
+   ~27 ms/decision (above the 20 ms G1 control budget — flagged as follow-up);
+   MPPI/TD-MPC2 ~18 ms; LQR/random ~0 ms.
+
+`scripts/verify_claims.py` turns findings 1, 3, 4, 5 (and determinism) into
+assertions and exits non-zero if any regresses. Numbers vary across machines and
+seeds; the *relative ordering* and the *direction of the OOD slope* are the
+stable signal.
 
 ## Isaac Lab + Unitree G1 results
 

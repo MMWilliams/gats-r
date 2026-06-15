@@ -44,7 +44,7 @@ class LayeredWorldModel:
         analytic: AnalyticModel,
         latent: EnsembleLatentModel,
         fallback: FallbackProposer,
-        l1_validity_threshold: float = 0.7,
+        l1_validity_threshold: float = 0.5,
         l2_epistemic_threshold: float = 0.5,
     ):
         self.l1 = analytic

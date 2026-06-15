@@ -72,7 +72,7 @@ class LQRRecoveryPolicy:
     def __call__(self, physical_state: np.ndarray) -> np.ndarray:
         s = np.asarray(physical_state[:4], dtype=np.float64).reshape(4, 1)
         u = -(self.K @ s).flatten()
-        a = float(np.clip(u / self.cfg.action_scale, -1.0, 1.0))
+        a = float(np.clip(u[0] / self.cfg.action_scale, -1.0, 1.0))
         self.steps_in_recovery += 1
         return np.array([a])
 

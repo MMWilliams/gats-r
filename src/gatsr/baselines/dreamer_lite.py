@@ -28,6 +28,11 @@ class DreamerLiteConfig:
     epochs: int = 8
     batch_size: int = 64
     seq_len: int = 16
+    # imagination actor-critic
+    actor_epochs: int = 40
+    actor_lr: float = 1e-3
+    imag_horizon: int = 12
+    imag_discount: float = 0.97
     seed: int = 0
 
 
@@ -93,30 +98,94 @@ class DreamerLiteAgent(nn.Module):
                 opt.step()
                 ep_losses.append(float(loss.detach()))
             losses.append(float(np.mean(ep_losses)) if ep_losses else float("nan"))
-        return {"final_loss": losses[-1] if losses else float("nan"), "loss_curve": losses}
+        # train the actor in imagination on top of the learned world model
+        actor_loss = self._train_actor(s)
+        return {
+            "final_loss": losses[-1] if losses else float("nan"),
+            "loss_curve": losses,
+            "actor_return": -actor_loss,
+        }
+
+    def _train_actor(self, states: torch.Tensor) -> float:
+        """Imagination actor-critic (DreamerV3-style pathwise gradients).
+
+        Roll the learned RSSM forward under the actor and maximize the
+        discounted analytic reward (upright + reach goal) on decoded states.
+        Trained in *goal-relative* coordinates (x is the signed distance to the
+        goal) to match the reactive `select_action`, which feeds the actor the
+        goal-shifted state. World-model weights are frozen here; only the actor
+        learns."""
+        wm_params = [
+            p
+            for name, p in self.named_parameters()
+            if not name.startswith("actor.")
+        ]
+        for p in wm_params:
+            p.requires_grad_(False)
+        opt = torch.optim.AdamW(self.actor.parameters(), lr=self.cfg.actor_lr)
+        N = states.shape[0]
+        rng = torch.Generator().manual_seed(self.cfg.seed)
+        last = 0.0
+        for _ in range(self.cfg.actor_epochs):
+            idx = torch.randperm(N, generator=rng)[: self.cfg.batch_size]
+            s0 = states[idx].clone()
+            # randomize x to a goal-relative offset so the actor must drive x->0
+            s0[:, 0] = (torch.rand(s0.shape[0], generator=rng) * 4.0 - 2.0)
+            # recurrent imagination: carry the deterministic state forward, the
+            # same way `select_action` does at inference (no per-step reset).
+            deter = torch.zeros(s0.shape[0], self.cfg.deter_dim)
+            stoch = self.posterior(torch.cat([deter, s0], dim=-1))
+            ret = torch.zeros(s0.shape[0])
+            gamma = 1.0
+            for _h in range(self.cfg.imag_horizon):
+                feat = torch.cat([deter, stoch], dim=-1)
+                a = self.actor(feat)
+                deter = self.gru(torch.cat([stoch, a], dim=-1), deter)
+                stoch = self.prior(deter)
+                s_next = self.decoder(torch.cat([deter, stoch], dim=-1))
+                # analytic reward on the decoded (goal-relative) state
+                th = s_next[:, 2]
+                x_rel = s_next[:, 0]
+                r = torch.cos(th) - 0.3 * x_rel.abs() - 0.01 * (a**2).sum(-1)
+                ret = ret + gamma * r
+                gamma *= self.cfg.imag_discount
+            loss = -ret.mean()
+            opt.zero_grad()
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_(self.actor.parameters(), 10.0)
+            opt.step()
+            last = float(loss.detach())
+        for p in wm_params:
+            p.requires_grad_(True)
+        return last
 
     # --- inference ------------------------------------------------------
 
-    def _hidden_state(self, s_t: torch.Tensor) -> torch.Tensor:
-        deter = torch.zeros(s_t.shape[0], self.cfg.deter_dim)
-        stoch = self.posterior(torch.cat([deter, s_t], dim=-1))
-        return torch.cat([deter, stoch], dim=-1)
+    def _reset_recurrent(self) -> None:
+        self._deter = torch.zeros(1, self.cfg.deter_dim)
 
     @torch.no_grad()
     def select_action(self, physical_state: np.ndarray) -> np.ndarray:
-        # bias toward goal by feeding offset state to the actor
+        # bias toward goal by feeding the goal-relative state to the actor
+        if not hasattr(self, "_deter"):
+            self._reset_recurrent()
         goal_x = self.env.current_goal()
         ps = physical_state.copy()
         ps[0] = ps[0] - goal_x
         s_t = torch.as_tensor(ps[:4], dtype=torch.float32).unsqueeze(0)
-        h = self._hidden_state(s_t)
-        a = self.actor(h).detach().cpu().numpy().flatten()
-        return np.clip(a, -1.0, 1.0)
+        # recurrent posterior update, then act, then advance the deterministic
+        # state (mirrors the imagination rollout used for actor training).
+        stoch = self.posterior(torch.cat([self._deter, s_t], dim=-1))
+        feat = torch.cat([self._deter, stoch], dim=-1)
+        a = self.actor(feat)
+        self._deter = self.gru(torch.cat([stoch, a], dim=-1), self._deter)
+        return np.clip(a.detach().cpu().numpy().flatten(), -1.0, 1.0)
 
     def evaluate(self, episodes: int = 5, seed_offset: int = 0):
         stats_list = []
         for ep in range(episodes):
             self.env.reset(seed=self.cfg.seed + seed_offset + ep)
+            self._reset_recurrent()
             done = False
             ep_return = 0.0
             steps = 0

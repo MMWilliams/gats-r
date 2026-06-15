@@ -36,6 +36,7 @@ import numpy as np
 
 GATSR_METHODS = {
     "gatsr_full": "GATS-R (full)",
+    "gatsr_no_layered": "  - no layered (L1 off)",
     "gatsr_no_graph": "  - no graph",
     "gatsr_no_recovery": "  - no recovery",
     "gatsr_no_monitor": "  - no monitor",
@@ -60,6 +61,7 @@ METHOD_COLORS = {
     "gatsr_no_recovery": "#8c564b",
     "gatsr_no_monitor": "#bcbd22",
     "gatsr_no_cbf": "#17becf",
+    "gatsr_no_layered": "#7f7f7f",
 }
 
 

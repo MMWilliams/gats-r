@@ -134,8 +134,11 @@ class GATSRAgent:
         info: dict = {}
 
         # 1. Set / refresh planner subgoal
-        if not self.cfg.use_skill_graph or not self.planner._current_path:
-            target = np.array([current_goal, 0.0, 0.0, 0.0])
+        target = np.array([current_goal, 0.0, 0.0, 0.0])
+        if not self.cfg.use_skill_graph:
+            # Ablation: bypass the landmark graph entirely, drive straight to goal.
+            self.planner.set_goal_direct(target)
+        elif not self.planner._current_path:
             self.planner.set_goal_physical(physical_state, target)
         # advance through landmarks if reached
         self.planner.advance_if_reached(physical_state)
@@ -147,7 +150,12 @@ class GATSRAgent:
         info["plan_ms"] = plan_ms
         info["plan_info"] = plan_info
 
-        # 3. Layered model "look-ahead" call gives us epistemic uncertainty
+        # 3. Layered world model selects the controller.
+        #    L1 (analytic) is used for *control* when in its domain of validity:
+        #    the goal-tracking LQR is exact near upright and far cheaper/safer
+        #    than planning through the learned L2 model. Outside L1 validity we
+        #    fall back to the L2 planner's action (computed above). This makes
+        #    the L1/L2/L3 selection drive control, not just report uncertainty.
         if self.cfg.use_layered:
             choice = self.layered.predict(
                 physical_state, nominal_action, goal_x=current_goal
@@ -156,9 +164,15 @@ class GATSRAgent:
             info["layer"] = choice.layer.value
             info["validity"] = choice.analytic_validity
             info["epistemic"] = epistemic
+            if choice.layer == Layer.L1:
+                nominal_action = self.analytic.control(physical_state, goal_x=current_goal)
+                info["control_source"] = "L1"
+            else:
+                info["control_source"] = "L2"
         else:
             epistemic = 0.0
             info["layer"] = "n/a"
+            info["control_source"] = "L2"
 
         # 4. CBF filter
         action_safe, intervened, residual = self.cbf(physical_state, nominal_action)

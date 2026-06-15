@@ -17,21 +17,29 @@ multi-goal planning, and statistically reportable robustness.
 ## Quickstart
 
 ```bash
-# 1. install
+# 1. install (works under NumPy 1.x and 2.x)
 pip install -r requirements.txt
 pip install -e .
 
-# 2. run the test suite (~20 s)
+# 2. run the test suite (59 tests, ~4 s)
 pytest -q
 
-# 3. run the benchmark (3 seeds x 6 methods x 3 OOD levels; ~5–10 min CPU)
-python scripts/benchmark.py --seeds 3 --episodes 20
+# 3. verify every qualitative claim programmatically (~2 min CPU)
+python scripts/verify_claims.py
 
-# 4. generate all figures from the cached results
+# 4. run the full benchmark (10 methods x 3 seeds x 3 OOD levels x 10 episodes
+#    = 990 episodes; ~45 min on a Ryzen 9 9900X CPU core)
+python scripts/benchmark.py --seeds 3 --episodes 10
+#    ...or a fast smoke version (~5 min):
+python scripts/benchmark.py --seeds 2 --episodes 4 --train-steps 800 --max-steps 150
+
+# 5. generate all figures from the results
 python scripts/make_figures.py
 ```
 
-Results land in `results/` (csv tables) and `results/figures/` (png plots).
+Results land in `results/` (csv tables) and `results/figures/` (png plots). A
+reference snapshot of both is committed, so `git diff results/` after a re-run
+shows how your machine compares to the reference.
 
 ## Architecture
 
@@ -75,8 +83,8 @@ Results land in `results/` (csv tables) and `results/figures/` (png plots).
 | **Safety** | `src/gatsr/safety/cbf.py`, `safety/reachability.py` | CBF filter + ROM reachability |
 | **Monitor** | `src/gatsr/monitoring/monitor.py` | Ensemble disagreement ∨ temporal consistency |
 | **Recovery** | `src/gatsr/recovery/` | Analytic LQR stabilizer keyed by skill graph |
-| **Agent** | `src/gatsr/agent.py` | Glues everything into a closed loop |
-| **Baselines** | `src/gatsr/baselines/` | TD-MPC2-lite, Dreamer-lite, PPO-lite |
+| **Agent** | `src/gatsr/agent.py` | Glues everything into a closed loop; uses L1 control when valid, else the L2 planner |
+| **Baselines** | `src/gatsr/baselines/` | Random, LQR (= L1), MPPI, TD-MPC2-lite, Dreamer-lite |
 
 ## Mapping from the full thesis
 
@@ -96,13 +104,39 @@ Results land in `results/` (csv tables) and `results/figures/` (png plots).
 
 ## Reproducibility
 
-Everything is deterministic given `--seed`. The benchmark script writes:
+The benchmark script writes:
 
 - `results/raw.csv` — per-(method, seed, OOD-level, episode) success/return/recovery/safety.
 - `results/summary.csv` — mean ± std aggregated to the (method, OOD-level) level.
-- `results/figures/*.png` — six publication-style plots (see `make_figures.py`).
+- `results/figures/*.png` — six plots (see `make_figures.py`).
 
-Re-running the same command with the same seeds yields bit-identical results.
+**Determinism.** On a *given machine*, re-running the same command with the same
+seeds reproduces every substantive metric bit-identically (the only column that
+varies is `planning_ms`, which is wall-clock timing). Verified by
+`scripts/verify_claims.py` (check C6). Across different machines or PyTorch
+builds, floating-point results can differ slightly because CPU kernels are not
+bit-portable; the *relative ordering* and the *direction of the OOD slope* are
+the stable, claim-supporting signal.
+
+**Headline CPU result** (`--seeds 3 --episodes 10`, n=30 episodes per cell;
+mean over the three OOD levels):
+
+| Method | Success | Return | CBF interv./ep | Planning ms |
+| --- | ---: | ---: | ---: | ---: |
+| random | 0.00 | -62.9 | 0.0 | 0.0 |
+| MPPI (L2 only) | 0.00 | -54.1 | 0.0 | 18.1 |
+| TD-MPC2-lite | 0.00 | -45.1 | 0.0 | 18.0 |
+| Dreamer-lite | 0.00 | -61.4 | 0.0 | 0.1 |
+| **LQR (= L1)** | **0.88** | **269.7** | 0.0 | 0.0 |
+| **GATS-R (full)** | **0.64** | 220.6 | 24.3 | 26.7 |
+
+On this *linearizable* toy task the analytic L1 controller (LQR) is the strongest
+single method; GATS-R inherits L1's performance through its layered selector and
+adds the monitor/recovery machinery (which is mostly dormant here but
+measurably active on the G1 — see below). The pure model-based-learning
+baselines (MPPI / TD-MPC2-lite / Dreamer-lite) do **not** solve the task at this
+minimal CPU training budget. See `RESULTS.md` for the full per-OOD tables,
+ablations, and figures.
 
 ## Layout
 
