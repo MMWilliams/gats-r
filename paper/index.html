@@ -54,9 +54,10 @@
   header.hero{position:relative;min-height:78vh;display:flex;align-items:flex-end;
     color:#fff;background:#05070f;overflow:hidden}
   header.hero img.bg{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;
-    opacity:.62;filter:saturate(1.05)}
+    opacity:.92;filter:saturate(1.05) contrast(1.03)}
   header.hero .scrim{position:absolute;inset:0;
-    background:linear-gradient(180deg,rgba(5,7,15,.35) 0%,rgba(5,7,15,.15) 40%,rgba(5,7,15,.92) 100%)}
+    background:linear-gradient(180deg,rgba(5,7,15,.15) 0%,rgba(5,7,15,.05) 35%,rgba(5,7,15,.86) 100%),
+      linear-gradient(90deg,rgba(5,7,15,.55) 0%,rgba(5,7,15,.12) 55%,rgba(5,7,15,0) 100%)}
   header.hero .wrap{position:relative;padding-top:70px;padding-bottom:54px}
   .kicker{display:inline-flex;align-items:center;gap:8px;font-size:12.5px;font-weight:700;
     letter-spacing:.18em;text-transform:uppercase;color:var(--cyan);
@@ -179,7 +180,7 @@
 
 <!-- ===================== HERO ===================== -->
 <header class="hero">
-  <img class="bg" src="assets/hero_walking.jpg" alt="Humanoid robot walking beside its world-model prediction"/>
+  <img class="bg" src="assets/real_hero_walk.jpg" alt="The actual Unitree G1 walking forward in the Isaac Lab simulation under GATS-R"/>
   <div class="scrim"></div>
   <div class="wrap">
     <span class="kicker">● Robots · Agents · World Models</span>
@@ -346,12 +347,13 @@
   <p class="sec-kicker">The world model</p>
   <h2 class="narrow">L1 → L2 → L3: trust the cheapest model that still holds</h2>
   <figure class="dark">
-    <img src="assets/worldmodel_layers.jpg" alt="Robot surrounded by three concentric world-model layers: analytic, learned ensemble, fallback generator"/>
-    <figcaption><b>Figure 2.</b> The layered world model as the agent's imagination. An <b>analytic</b>
-      core (exact near the operating point), a <b>learned ensemble</b> that reports epistemic
-      uncertainty, and a <b>generative fallback</b> that proposes recoverable sub-goals when both are
-      unsure. Crucially, the layer choice <em>selects the controller</em> — the single most
-      load-bearing design decision in the system.</figcaption>
+    <img src="assets/real_stand.jpg" alt="The actual Unitree G1 standing in the Isaac Lab simulation"/>
+    <figcaption><b>Figure 2.</b> The actual Unitree&nbsp;G1 in our Isaac&nbsp;Lab environment (frame
+      captured from the running sim). The agent reasons about this robot with a <em>layered</em>
+      world model — an <b>analytic</b> core exact near the operating point (L1), a <b>learned
+      ensemble</b> that reports epistemic uncertainty (L2), and a <b>generative fallback</b> (L3) —
+      and the layer choice <em>selects the controller</em>, the single most load-bearing design
+      decision in the system.</figcaption>
   </figure>
   <div class="narrow">
     <p>The orchestrator picks <span class="pill">L1</span> when the analytic model is in its domain of
@@ -381,9 +383,11 @@
     </div>
     <div>
       <figure style="margin-top:8px">
-        <img src="assets/skillgraph_planning.jpg" alt="Robot facing a glowing skill-graph and Monte-Carlo search tree toward a goal beacon"/>
-        <figcaption><b>Figure 3.</b> Skill-graph routing (gold path) with a continuous-MCTS search
-          tree branching toward the goal beacon.</figcaption>
+        <img src="assets/real_rough_walk.jpg" alt="The actual Unitree G1 stepping forward on rough terrain in Isaac Lab"/>
+        <figcaption><b>Figure 3.</b> The actual G1 stepping forward on
+          <code class="inl">Isaac-Velocity-Rough-G1-v0</code>. The agent routes long-horizon goals
+          over a skill graph (Dijkstra) and solves each edge with continuous MCTS / MPPI over the
+          learned dynamics.</figcaption>
       </figure>
     </div>
   </div>
@@ -395,17 +399,18 @@
   <h2 class="narrow">Keep it inside the safe set — and get it back up when it leaves</h2>
   <div class="fig-2">
     <figure class="dark">
-      <img src="assets/cbf_safety.jpg" alt="Robot inside a glowing control-barrier-function safety envelope"/>
-      <figcaption><b>Figure 4. CBF safety filter.</b> Following CBF-RL, the filter is applied during
-        training so the policy internalises the constraint, projecting unsafe proposed actions back
-        onto the safe set. It fires <b>16.2×/episode</b> on the G1 — and is a measured
-        safety-vs-performance trade-off on the benign cart-pole.</figcaption>
+      <img src="assets/real_stride.jpg" alt="The actual Unitree G1 mid-stride in the Isaac Lab simulation"/>
+      <figcaption><b>Figure 4. CBF safety filter.</b> The actual G1 under GATS-R. Following CBF-RL,
+        the filter is applied during training so the policy internalises the constraint, projecting
+        unsafe proposed actions back onto the safe set. It fires <b>16.2×/episode</b> on the G1 — and
+        is a measured safety-vs-performance trade-off on the benign cart-pole.</figcaption>
     </figure>
     <figure class="dark">
-      <img src="assets/recovery.jpg" alt="Humanoid robot pushing itself up and recovering from a fall"/>
-      <figcaption><b>Figure 5. Graph-indexed recovery.</b> When the monitor flags OOD or the robot
-        falls, control routes to a dedicated recovery controller. On the G1 it attempts recovery
-        <b>1.42×/episode at 91.2% success</b> (~14 control steps); the interface accepts a
+      <img src="assets/real_recovery.jpg" alt="The actual Unitree G1 fallen on rough terrain with the recovery dispatcher active"/>
+      <figcaption><b>Figure 5. Graph-indexed recovery.</b> The actual G1 fallen on rough terrain
+        (frame from the running sim) with the recovery dispatcher engaged. When the monitor flags OOD
+        or the robot falls, control routes to a dedicated recovery controller — on the G1 it attempts
+        recovery <b>1.42×/episode at 91.2% success</b> (~14 control steps); the interface accepts a
         FRASA/FIRM policy as a drop-in.</figcaption>
     </figure>
   </div>
