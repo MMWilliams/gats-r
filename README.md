@@ -6,6 +6,11 @@ Isaac-Lab/Unitree-G1 thesis to a fast CPU-only toy continuous-control task that
 exhibits the same phenomena: falling, recovery, OOD generalization, long-horizon
 multi-goal planning, and statistically reportable robustness.
 
+> 📄 **Illustrated paper:** a visual write-up with the architecture, robot
+> renders, charts, and result tables lives at [`paper/index.html`](paper/index.html)
+> (open in a browser) — or read the PDF at [`paper/GATSR_paper.pdf`](paper/GATSR_paper.pdf).
+> The plain-text technical report is [`paper/PAPER.md`](paper/PAPER.md).
+
 > **Why a toy task?** The full thesis targets Isaac Lab + Unitree G1 (29-DoF
 > humanoid), which requires GPU clusters and physical hardware. This repo
 > implements every *architectural* idea (layered L1/L2/L3 world model, skill

@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>GATS-R — Layered World Models with Graph-Indexed Recovery for Robot Control</title>
+<meta name="description" content="A reference architecture for layered world models, skill-graph planning, runtime monitoring, CBF safety, and graph-indexed recovery — validated on a CPU BalanceBot and the 37-DoF Unitree G1 in Isaac Lab."/>
+<style>
+  :root{
+    --ink:#0b1020; --ink2:#1c2740; --muted:#5b6885; --line:#e4e8f2;
+    --cyan:#06b6d4; --cyan-d:#0891b2; --amber:#f59e0b; --violet:#7c5cff;
+    --good:#16a34a; --bad:#dc2626; --paper:#ffffff; --soft:#f6f8fc;
+    --maxw:1080px;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;color:var(--ink);background:var(--paper);
+    font-family:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,"Times New Roman",serif;
+    font-size:18px;line-height:1.62;-webkit-font-smoothing:antialiased;
+    -webkit-print-color-adjust:exact;print-color-adjust:exact}
+  @media print{
+    nav.top{position:static}
+    section{padding:34px 0;break-inside:avoid}
+    header.hero{min-height:540px}
+    figure,.card,.callout,.tbl,.arch,pre{break-inside:avoid}
+    h2,h3{break-after:avoid}
+    a[href^="http"]::after{content:""}
+    .tbl{overflow:visible}
+    table{font-size:11px}
+    th,td{padding:6px 8px}
+    .stat-strip{break-inside:avoid}
+    pre{font-size:11px}
+  }
+  @page{size:A4;margin:14mm}
+  h1,h2,h3,h4,.sans,nav,.metric,.tag,table,figcaption,.kicker{
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+  a{color:var(--cyan-d);text-decoration:none}
+  a:hover{text-decoration:underline}
+  .wrap{max-width:var(--maxw);margin:0 auto;padding:0 24px}
+  .narrow{max-width:760px;margin-left:auto;margin-right:auto}
+
+  /* ---------- top nav ---------- */
+  nav.top{position:sticky;top:0;z-index:50;background:rgba(11,16,32,.86);
+    backdrop-filter:blur(10px);border-bottom:1px solid rgba(255,255,255,.08)}
+  nav.top .wrap{display:flex;align-items:center;gap:18px;height:54px}
+  nav.top .brand{color:#fff;font-weight:800;letter-spacing:.04em;font-size:15px}
+  nav.top .brand b{color:var(--cyan)}
+  nav.top .links{margin-left:auto;display:flex;gap:18px;flex-wrap:wrap}
+  nav.top a{color:#c9d4ea;font-size:13.5px;font-weight:600;letter-spacing:.02em}
+  nav.top a:hover{color:#fff;text-decoration:none}
+  @media(max-width:760px){nav.top .links{display:none}}
+
+  /* ---------- hero ---------- */
+  header.hero{position:relative;min-height:78vh;display:flex;align-items:flex-end;
+    color:#fff;background:#05070f;overflow:hidden}
+  header.hero img.bg{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;
+    opacity:.62;filter:saturate(1.05)}
+  header.hero .scrim{position:absolute;inset:0;
+    background:linear-gradient(180deg,rgba(5,7,15,.35) 0%,rgba(5,7,15,.15) 40%,rgba(5,7,15,.92) 100%)}
+  header.hero .wrap{position:relative;padding-top:70px;padding-bottom:54px}
+  .kicker{display:inline-flex;align-items:center;gap:8px;font-size:12.5px;font-weight:700;
+    letter-spacing:.18em;text-transform:uppercase;color:var(--cyan);
+    background:rgba(6,182,212,.12);border:1px solid rgba(6,182,212,.35);
+    padding:6px 12px;border-radius:999px}
+  header.hero h1{font-size:clamp(34px,5.4vw,62px);line-height:1.04;margin:18px 0 10px;
+    font-weight:800;letter-spacing:-.015em;max-width:16em;text-shadow:0 2px 30px rgba(0,0,0,.5)}
+  header.hero h1 .grad{background:linear-gradient(90deg,#22d3ee,#a78bfa);
+    -webkit-background-clip:text;background-clip:text;color:transparent}
+  header.hero .sub{font-size:clamp(17px,2vw,21px);color:#dce6f7;max-width:40em;margin:0 0 22px}
+  .authors{font-family:system-ui,sans-serif;font-size:15px;color:#c9d4ea;margin-bottom:18px}
+  .authors b{color:#fff}
+  .tags{display:flex;flex-wrap:wrap;gap:10px}
+  .tag{font-size:12.5px;font-weight:700;letter-spacing:.03em;padding:7px 13px;border-radius:8px;
+    background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.18);color:#eaf1fb}
+  .tag.ok{background:rgba(22,163,74,.16);border-color:rgba(22,163,74,.5);color:#bbf7d0}
+  .tag.cy{background:rgba(6,182,212,.16);border-color:rgba(6,182,212,.5);color:#a5f3fc}
+
+  /* ---------- metric strip ---------- */
+  .stat-strip{background:linear-gradient(180deg,#0b1020,#111a30);color:#fff;
+    border-bottom:1px solid rgba(255,255,255,.06)}
+  .stat-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:0}
+  .metric{padding:26px 18px;text-align:center;border-right:1px solid rgba(255,255,255,.07)}
+  .metric:last-child{border-right:none}
+  .metric .n{font-size:34px;font-weight:800;letter-spacing:-.02em;
+    background:linear-gradient(90deg,#67e8f9,#a78bfa);-webkit-background-clip:text;
+    background-clip:text;color:transparent}
+  .metric .l{font-size:12.5px;color:#aebbd6;margin-top:4px;letter-spacing:.02em}
+  @media(max-width:820px){.stat-grid{grid-template-columns:repeat(2,1fr)}
+    .metric{border-bottom:1px solid rgba(255,255,255,.07)}}
+
+  /* ---------- sections ---------- */
+  section{padding:64px 0}
+  section.alt{background:var(--soft);border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+  .sec-kicker{font-family:system-ui,sans-serif;color:var(--cyan-d);font-weight:800;
+    letter-spacing:.14em;text-transform:uppercase;font-size:12.5px;margin:0 0 8px}
+  h2{font-size:clamp(26px,3.4vw,38px);line-height:1.12;margin:0 0 14px;font-weight:800;letter-spacing:-.01em}
+  h3{font-size:22px;margin:34px 0 8px;font-weight:700}
+  p{margin:0 0 16px}
+  .lead{font-size:21px;color:var(--ink2);line-height:1.55}
+  strong{color:var(--ink)}
+  .pill{display:inline-block;font-family:system-ui,sans-serif;font-size:12px;font-weight:700;
+    padding:2px 8px;border-radius:6px;background:#eef2fb;color:#33425f;border:1px solid var(--line)}
+
+  /* ---------- figures ---------- */
+  figure{margin:30px 0}
+  figure img{width:100%;display:block;border-radius:14px;border:1px solid var(--line);
+    box-shadow:0 18px 50px -24px rgba(13,30,70,.45)}
+  figure.dark img{border:1px solid #1c2740}
+  figcaption{font-size:14px;color:var(--muted);margin-top:12px;line-height:1.5}
+  figcaption b{color:var(--ink2)}
+  .fig-2{display:grid;grid-template-columns:1fr 1fr;gap:22px}
+  @media(max-width:760px){.fig-2{grid-template-columns:1fr}}
+
+  /* ---------- cards ---------- */
+  .cards{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;margin:26px 0}
+  @media(max-width:820px){.cards{grid-template-columns:1fr}}
+  .card{background:var(--paper);border:1px solid var(--line);border-radius:14px;padding:22px;
+    box-shadow:0 10px 30px -22px rgba(13,30,70,.4)}
+  .card .ic{width:40px;height:40px;border-radius:10px;display:grid;place-items:center;
+    font-size:20px;margin-bottom:12px;background:linear-gradient(135deg,#e0f7fd,#ede9ff)}
+  .card h4{font-family:system-ui,sans-serif;margin:0 0 6px;font-size:17px}
+  .card p{font-size:15px;color:var(--muted);margin:0}
+
+  /* ---------- tables ---------- */
+  .tbl{overflow-x:auto;margin:24px 0;border:1px solid var(--line);border-radius:14px}
+  table{border-collapse:collapse;width:100%;font-size:14px;table-layout:fixed}
+  th,td{padding:11px 10px;text-align:right;border-bottom:1px solid var(--line);overflow-wrap:break-word}
+  th:first-child,td:first-child{text-align:left;width:21%}
+  thead th{background:var(--ink);color:#fff;font-weight:700;font-size:12.5px;
+    letter-spacing:.03em;border-bottom:none;position:sticky;top:0}
+  tbody tr:nth-child(even){background:var(--soft)}
+  tr.hi td{background:#ecfdff !important;font-weight:700}
+  tr.hi td:first-child{box-shadow:inset 4px 0 0 var(--cyan)}
+  tr.bad td{color:#7a8094}
+  .good{color:var(--good);font-weight:700}
+  .badv{color:var(--bad);font-weight:700}
+
+  /* ---------- callouts ---------- */
+  .callout{border-left:4px solid var(--cyan);background:linear-gradient(90deg,#ecfeff,#f7fbff);
+    padding:18px 22px;border-radius:0 12px 12px 0;margin:24px 0;font-size:16.5px}
+  .callout.amber{border-color:var(--amber);background:linear-gradient(90deg,#fffbeb,#fffdf5)}
+  .callout .h{font-family:system-ui,sans-serif;font-weight:800;display:block;margin-bottom:4px}
+
+  code,pre{font-family:"SFMono-Regular",Consolas,"Liberation Mono",monospace}
+  pre{background:#0b1020;color:#dbe7ff;padding:18px 20px;border-radius:12px;overflow-x:auto;
+    font-size:13.5px;line-height:1.6;border:1px solid #1c2740}
+  pre .c{color:#6b7aa3}
+  pre .g{color:#67e8f9}
+  code.inl{background:#eef2fb;border:1px solid var(--line);border-radius:5px;padding:1px 6px;font-size:.86em}
+
+  /* architecture svg */
+  .arch{background:#0b1020;border-radius:16px;padding:18px;border:1px solid #1c2740;margin:26px 0}
+  .arch svg{width:100%;height:auto;display:block}
+
+  footer{background:#0b1020;color:#c9d4ea;padding:54px 0;border-top:1px solid #1c2740;font-size:15px}
+  footer a{color:#7dd3fc}
+  footer h4{color:#fff;font-family:system-ui,sans-serif;margin:0 0 10px}
+  .ref{font-size:13.5px;color:var(--muted);line-height:1.7}
+  .two{display:grid;grid-template-columns:1.4fr 1fr;gap:40px}
+  @media(max-width:820px){.two{grid-template-columns:1fr}}
+  hr.soft{border:none;border-top:1px solid var(--line);margin:38px 0}
+</style>
+</head>
+<body>
+
+<nav class="top"><div class="wrap">
+  <span class="brand">GATS&#8209;<b>R</b></span>
+  <span class="links">
+    <a href="#overview">Overview</a>
+    <a href="#architecture">Architecture</a>
+    <a href="#worldmodel">World Model</a>
+    <a href="#planning">Planning</a>
+    <a href="#safety">Safety &amp; Recovery</a>
+    <a href="#results">Results</a>
+    <a href="#repro">Reproduce</a>
+    <a href="https://github.com/MMWilliams/gats-r">GitHub ↗</a>
+  </span>
+</div></nav>
+
+<!-- ===================== HERO ===================== -->
+<header class="hero">
+  <img class="bg" src="assets/hero_walking.jpg" alt="Humanoid robot walking beside its world-model prediction"/>
+  <div class="scrim"></div>
+  <div class="wrap">
+    <span class="kicker">● Robots · Agents · World Models</span>
+    <h1>Layered World Models with <span class="grad">Graph-Indexed Recovery</span> for Robust Robot Control</h1>
+    <p class="sub">GATS-R closes a single loop around a layered world model, skill-graph planning,
+      a Sentinel-style monitor, CBF safety, and graph-routed recovery — verified end-to-end on a
+      CPU task <em>and</em> the 37-DoF Unitree&nbsp;G1 humanoid in Isaac&nbsp;Lab.</p>
+    <div class="authors">M.&nbsp;M.&nbsp;Williams &nbsp;·&nbsp; <b>Reference implementation &amp; technical report</b> &nbsp;·&nbsp; 2026</div>
+    <div class="tags">
+      <span class="tag ok">✓ 59/59 tests pass</span>
+      <span class="tag ok">✓ Claims auto-verified</span>
+      <span class="tag cy">Dual RTX&nbsp;5090 · Isaac&nbsp;Sim&nbsp;5.x</span>
+      <span class="tag">Open source</span>
+    </div>
+  </div>
+</header>
+
+<!-- ===================== STAT STRIP ===================== -->
+<div class="stat-strip"><div class="wrap"><div class="stat-grid">
+  <div class="metric"><div class="n">0.88</div><div class="l">BalanceBot success<br/>(analytic L1)</div></div>
+  <div class="metric"><div class="n">91.2%</div><div class="l">G1 recovery success<br/>on rough terrain</div></div>
+  <div class="metric"><div class="n">16.2</div><div class="l">CBF interventions<br/>per G1 episode</div></div>
+  <div class="metric"><div class="n">5&nbsp;ms</div><div class="l">planning / decision<br/>(&lt; 20&nbsp;ms budget)</div></div>
+  <div class="metric"><div class="n">100%</div><div class="l">claims reproduced<br/>from a fresh clone</div></div>
+</div></div></div>
+
+<!-- ===================== OVERVIEW ===================== -->
+<section id="overview"><div class="wrap narrow">
+  <p class="sec-kicker">Abstract</p>
+  <h2>One closed loop for model-based robot agents</h2>
+  <p class="lead">Modern robot learning has strong <em>individual</em> layers — latent world models,
+    runtime failure monitors, learned fall-recovery, control-barrier-function safety — but no public
+    system wires them into a single closed loop on a humanoid. <strong>GATS-R</strong> is that integration,
+    released as an inspectable reference implementation.</p>
+  <p>The agent perceives the robot's state, consults a <strong>layered world model</strong>
+    (L1 analytic → L2 learned ensemble → L3 generative fallback), plans with a
+    <strong>skill-landmark graph + continuous MCTS</strong>, projects every action through a
+    <strong>CBF safety filter</strong>, watches itself with a <strong>Sentinel-style monitor</strong>,
+    and — when the monitor flags out-of-distribution or the robot falls — hands control to a
+    <strong>graph-indexed recovery dispatcher</strong>. We implement it twice: a fast CPU
+    <em>BalanceBot</em> reference and a GPU-batched <em>Isaac&nbsp;Lab</em> port that drives the
+    37-DoF Unitree&nbsp;G1.</p>
+  <div class="callout"><span class="h">What we claim — and verify automatically</span>
+    The integration runs, each layer measurably activates on real humanoid physics, and every number
+    in this report reproduces from a fresh clone. A one-line <code class="inl">verify_claims.py</code>
+    turns each finding into an assertion. We make <em>no</em> claim that the deliberately
+    under-trained G1 policy walks rough terrain — the contribution is the integration, the
+    reproducible interfaces, and the measurable activation of each layer.</p>
+</div></section>
+
+<!-- ===================== CONTRIBUTIONS ===================== -->
+<section class="alt"><div class="wrap">
+  <p class="sec-kicker">Contributions</p>
+  <h2 class="narrow" style="margin-bottom:6px">Three layers, one agent, two robots</h2>
+  <div class="cards">
+    <div class="card"><div class="ic">🧠</div><h4>Layered world model</h4>
+      <p>An analytic prior (L1), a learned ensemble with epistemic uncertainty (L2), and a generative
+        sub-goal proposer (L3). The orchestrator picks the cheapest model that is still trustworthy —
+        and that choice <em>drives control</em>, not just prediction.</p></div>
+    <div class="card"><div class="ic">🕸️</div><h4>Graph-indexed recovery</h4>
+      <p>Monitor-detected OOD states snap to the nearest skill-graph node and route — via Dijkstra —
+        to a dedicated recovery controller (LQR on the toy, PD stand-up on the G1, FRASA/FIRM-ready).</p></div>
+    <div class="card"><div class="ic">🤖</div><h4>Two reproducible robots</h4>
+      <p>A CPU <em>BalanceBot</em> (cart-pole + multi-goal + disturbances) and a GPU-batched
+        Unitree&nbsp;G1 Isaac&nbsp;Lab port — same agent API, committed result data, and a claim-verifier.</p></div>
+  </div>
+</div></section>
+
+<!-- ===================== ARCHITECTURE ===================== -->
+<section id="architecture"><div class="wrap">
+  <p class="sec-kicker">Architecture</p>
+  <h2 class="narrow">The GATS-R closed loop</h2>
+  <p class="narrow">Every decision flows through the same pipeline. The world model selects a controller;
+    the planner proposes an action; the CBF filter makes it safe; the monitor decides whether the
+    agent is still in-distribution; and the recovery dispatcher takes over when it is not.</p>
+
+  <div class="arch">
+  <svg viewBox="0 0 980 360" role="img" aria-label="GATS-R closed-loop architecture diagram">
+    <defs>
+      <marker id="ar" markerWidth="10" markerHeight="10" refX="7" refY="3" orient="auto">
+        <path d="M0,0 L7,3 L0,6 Z" fill="#67e8f9"/></marker>
+      <marker id="arA" markerWidth="10" markerHeight="10" refX="7" refY="3" orient="auto">
+        <path d="M0,0 L7,3 L0,6 Z" fill="#f59e0b"/></marker>
+      <linearGradient id="gbox" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#16213e"/><stop offset="1" stop-color="#0f1830"/></linearGradient>
+      <style>
+        .b{fill:url(#gbox);stroke:#2b3a5e;stroke-width:1.4;rx:12}
+        .t{fill:#eaf1fb;font:600 15px system-ui,sans-serif}
+        .s{fill:#93a4c8;font:500 11.5px system-ui,sans-serif}
+        .e{stroke:#67e8f9;stroke-width:2;fill:none;marker-end:url(#ar)}
+        .ea{stroke:#f59e0b;stroke-width:2;fill:none;marker-end:url(#arA);stroke-dasharray:6 4}
+        .lab{fill:#67e8f9;font:700 11px system-ui,sans-serif}
+        .laba{fill:#f59e0b;font:700 11px system-ui,sans-serif}
+      </style>
+    </defs>
+      <!-- world model box -->
+      <rect class="b" x="40"  y="232" width="210" height="96" rx="12"/>
+      <text class="t" x="60" y="258">Layered World Model</text>
+      <text class="s" x="60" y="280">L1 analytic · L2 ensemble</text>
+      <text class="s" x="60" y="296">L3 generative fallback</text>
+      <text class="s" x="60" y="316">→ validity &amp; epistemic ε</text>
+
+      <!-- skill graph -->
+      <rect class="b" x="40" y="40" width="210" height="78" rx="12"/>
+      <text class="t" x="60" y="70">Skill-Landmark Graph</text>
+      <text class="s" x="60" y="92">k-NN latent landmarks</text>
+      <text class="s" x="60" y="108">Dijkstra → sub-goals</text>
+
+      <!-- planner -->
+      <rect class="b" x="300" y="40" width="200" height="78" rx="12"/>
+      <text class="t" x="320" y="70">Two-level Planner</text>
+      <text class="s" x="320" y="92">A* over graph +</text>
+      <text class="s" x="320" y="108">continuous MCTS / MPPI</text>
+
+      <!-- CBF -->
+      <rect class="b" x="560" y="40" width="180" height="78" rx="12"/>
+      <text class="t" x="580" y="70">CBF Safety Filter</text>
+      <text class="s" x="580" y="92">project unsafe action</text>
+      <text class="s" x="580" y="108">onto safe set</text>
+
+      <!-- env / robot -->
+      <rect class="b" x="790" y="120" width="150" height="120" rx="12" style="stroke:#3a4f86"/>
+      <text class="t" x="812" y="150">Robot /</text>
+      <text class="t" x="812" y="170">Environment</text>
+      <text class="s" x="812" y="196">BalanceBot</text>
+      <text class="s" x="812" y="212">Unitree G1</text>
+      <text class="s" x="812" y="228">(Isaac Lab)</text>
+
+      <!-- monitor -->
+      <rect class="b" x="560" y="252" width="180" height="80" rx="12"/>
+      <text class="t" x="580" y="282">Sentinel Monitor</text>
+      <text class="s" x="580" y="304">ensemble ∨ temporal</text>
+      <text class="s" x="580" y="320">∨ safe-stoppability</text>
+
+      <!-- recovery -->
+      <rect class="b" x="300" y="252" width="200" height="80" rx="12" style="stroke:#7a5a16"/>
+      <text class="t" x="320" y="282">Recovery Dispatch</text>
+      <text class="s" x="320" y="304">graph-indexed</text>
+      <text class="s" x="320" y="320">LQR / PD stand-up</text>
+
+      <!-- edges -->
+      <path class="e" d="M250 79 L298 79"/>                         <!-- graph->planner -->
+      <path class="e" d="M500 79 L558 79"/>                         <!-- planner->cbf -->
+      <path class="e" d="M740 90 C800 95 820 100 850 118"/>         <!-- cbf->robot -->
+      <path class="e" d="M150 232 L150 120"/>                       <!-- WM->graph -->
+      <text class="lab" x="158" y="180">validity</text>
+      <path class="e" d="M250 280 C 700 360 760 340 800 240"/>      <!-- robot->monitor (state) -->
+      <path class="e" d="M788 200 C 770 240 760 250 742 280"/>      <!-- robot->monitor -->
+      <text class="lab" x="752" y="250">state</text>
+      <path class="ea" d="M558 292 L502 292"/>                      <!-- monitor->recovery OOD -->
+      <text class="laba" x="512" y="284">OOD</text>
+      <path class="ea" d="M300 300 C 200 330 170 320 150 300 L150 232"/> <!-- recovery feeds back via WM/graph -->
+      <path class="e" d="M250 70 C 270 60 285 56 298 56" opacity="0"/>
+    </svg>
+  </div>
+  <figcaption style="text-align:center">
+    <b>Figure 1.</b> The closed loop. Solid cyan = nominal control path; dashed amber = the recovery
+    path that fires when the monitor flags out-of-distribution or the robot falls. The same interfaces
+    drive both the CPU BalanceBot and the Isaac-Lab Unitree&nbsp;G1.</figcaption>
+</div></section>
+
+<!-- ===================== WORLD MODEL ===================== -->
+<section id="worldmodel" class="alt"><div class="wrap">
+  <p class="sec-kicker">The world model</p>
+  <h2 class="narrow">L1 → L2 → L3: trust the cheapest model that still holds</h2>
+  <figure class="dark">
+    <img src="assets/worldmodel_layers.jpg" alt="Robot surrounded by three concentric world-model layers: analytic, learned ensemble, fallback generator"/>
+    <figcaption><b>Figure 2.</b> The layered world model as the agent's imagination. An <b>analytic</b>
+      core (exact near the operating point), a <b>learned ensemble</b> that reports epistemic
+      uncertainty, and a <b>generative fallback</b> that proposes recoverable sub-goals when both are
+      unsure. Crucially, the layer choice <em>selects the controller</em> — the single most
+      load-bearing design decision in the system.</figcaption>
+  </figure>
+  <div class="narrow">
+    <p>The orchestrator picks <span class="pill">L1</span> when the analytic model is in its domain of
+      validity, else <span class="pill">L2</span> when ensemble disagreement <code class="inl">ε</code>
+      is low, else <span class="pill">L3</span> fires and the agent re-plans toward a recoverable
+      anchor. On BalanceBot, L1 is a goal-tracking LQR; when it is engaged the robot solves the
+      multi-goal task, and <strong>disabling the layered selector collapses success from 0.64 to
+      0.00</strong> — quantitative proof the layering is doing the work, not decoration.</p>
+  </div>
+</div></section>
+
+<!-- ===================== PLANNING ===================== -->
+<section id="planning"><div class="wrap">
+  <div class="two">
+    <div>
+      <p class="sec-kicker">Planning agent</p>
+      <h2>A graph for the long horizon, a search tree for each edge</h2>
+      <p>Following SPTM and World-Model-as-a-Graph, the agent clusters latent embeddings into
+        landmark nodes and runs <strong>Dijkstra</strong> over them to cut a long-horizon, multi-goal
+        problem into short edges. Inside each edge it runs <strong>continuous MCTS with Voronoi
+        Progressive Widening</strong> (or MPPI as a baseline switch) over the learned dynamics.</p>
+      <p>Every node carries an explicit edge to a dedicated <strong>recovery anchor</strong>, so the
+        recovery dispatcher always has a routable target — recovery is <em>indexed by the same
+        graph</em> the agent plans on.</p>
+      <p class="pill">A* / Dijkstra</p> <p class="pill">Continuous MCTS + VPW</p>
+      <p class="pill">MPPI inner loop</p> <p class="pill">k-NN skill graph</p>
+    </div>
+    <div>
+      <figure style="margin-top:8px">
+        <img src="assets/skillgraph_planning.jpg" alt="Robot facing a glowing skill-graph and Monte-Carlo search tree toward a goal beacon"/>
+        <figcaption><b>Figure 3.</b> Skill-graph routing (gold path) with a continuous-MCTS search
+          tree branching toward the goal beacon.</figcaption>
+      </figure>
+    </div>
+  </div>
+</div></section>
+
+<!-- ===================== SAFETY & RECOVERY ===================== -->
+<section id="safety" class="alt"><div class="wrap">
+  <p class="sec-kicker">Safety &amp; recovery</p>
+  <h2 class="narrow">Keep it inside the safe set — and get it back up when it leaves</h2>
+  <div class="fig-2">
+    <figure class="dark">
+      <img src="assets/cbf_safety.jpg" alt="Robot inside a glowing control-barrier-function safety envelope"/>
+      <figcaption><b>Figure 4. CBF safety filter.</b> Following CBF-RL, the filter is applied during
+        training so the policy internalises the constraint, projecting unsafe proposed actions back
+        onto the safe set. It fires <b>16.2×/episode</b> on the G1 — and is a measured
+        safety-vs-performance trade-off on the benign cart-pole.</figcaption>
+    </figure>
+    <figure class="dark">
+      <img src="assets/recovery.jpg" alt="Humanoid robot pushing itself up and recovering from a fall"/>
+      <figcaption><b>Figure 5. Graph-indexed recovery.</b> When the monitor flags OOD or the robot
+        falls, control routes to a dedicated recovery controller. On the G1 it attempts recovery
+        <b>1.42×/episode at 91.2% success</b> (~14 control steps); the interface accepts a
+        FRASA/FIRM policy as a drop-in.</figcaption>
+    </figure>
+  </div>
+  <div class="callout amber narrow"><span class="h">The monitor fuses three signals</span>
+    ensemble disagreement (L2's epistemic ε) ∨ temporal action-consistency ∨ a safe-stoppability
+    proxy (body tilt) — a Sentinel-style detector that decides, every step, whether the nominal
+    agent is still trustworthy.</div>
+</div></section>
+
+<!-- ===================== RESULTS ===================== -->
+<section id="results"><div class="wrap">
+  <p class="sec-kicker">Experiments</p>
+  <h2 class="narrow">The task is solved — by the layered agent, not the lone learner</h2>
+  <p class="narrow">CPU benchmark: 10 methods × 3 seeds × 3 OOD levels × 10 episodes
+    (n&nbsp;=&nbsp;30 per cell, ~45&nbsp;min on one CPU core). Values are means over the three OOD
+    levels. The full per-OOD tables and figures ship as committed data.</p>
+
+  <div class="tbl"><table>
+    <thead><tr><th>Method</th><th>Success ↑</th><th>Return ↑</th><th>CBF&nbsp;interv./ep</th>
+      <th>Recovery&nbsp;att./ep</th><th>Recovery&nbsp;succ.</th><th>Plan&nbsp;ms</th></tr></thead>
+    <tbody>
+      <tr class="bad"><td>random</td><td>0.00</td><td class="badv">−62.9</td><td>0.0</td><td>0.00</td><td>—</td><td>0.0</td></tr>
+      <tr class="bad"><td>MPPI (L2 only)</td><td>0.00</td><td class="badv">−54.1</td><td>0.0</td><td>0.00</td><td>—</td><td>18.1</td></tr>
+      <tr class="bad"><td>TD-MPC2-lite</td><td>0.00</td><td class="badv">−45.1</td><td>0.0</td><td>0.00</td><td>—</td><td>18.0</td></tr>
+      <tr class="bad"><td>Dreamer-lite</td><td>0.00</td><td class="badv">−61.4</td><td>0.0</td><td>0.00</td><td>—</td><td>0.1</td></tr>
+      <tr><td><b>LQR&nbsp;(= L1)</b></td><td class="good">0.88</td><td class="good">+269.7</td><td>0.0</td><td>0.00</td><td>—</td><td>0.0</td></tr>
+      <tr class="hi"><td><b>GATS-R (full)</b></td><td>0.64</td><td>+220.6</td><td>24.3</td><td>0.36</td><td>0.00</td><td>26.7</td></tr>
+      <tr><td>— no layered (L1 off)</td><td class="badv">0.00</td><td class="badv">−0.5</td><td>40.1</td><td>2.54</td><td>0.60</td><td>24.3</td></tr>
+      <tr><td>— no graph</td><td>0.64</td><td>+221.1</td><td>24.5</td><td>0.36</td><td>0.00</td><td>29.4</td></tr>
+      <tr><td>— no recovery</td><td>0.64</td><td>+220.6</td><td>23.3</td><td>0.00</td><td>—</td><td>27.5</td></tr>
+      <tr><td>— no monitor</td><td>0.64</td><td>+220.6</td><td>24.3</td><td>0.36</td><td>0.00</td><td>27.5</td></tr>
+      <tr><td>— no CBF</td><td>0.79</td><td>+253.0</td><td>0.0</td><td>0.21</td><td>0.00</td><td>29.9</td></tr>
+    </tbody>
+  </table></div>
+  <figcaption style="margin-top:-8px"><b>Table 1.</b> BalanceBot. The analytic L1 controller wins on
+    this linearizable task; GATS-R inherits most of it through the layered selector. Pure
+    model-based-learning baselines reach 0 at the deliberately minimal CPU budget — the honest,
+    expected result that motivates the analytic prior. <b>Disabling L1 is catastrophic</b>; disabling
+    CBF <em>raises</em> task reward (it is a safety trade-off).</figcaption>
+
+  <div class="fig-2" style="margin-top:30px">
+    <figure><img src="assets/fig01_success_vs_ood.png" alt="Success vs OOD level"/>
+      <figcaption><b>Figure 6.</b> Robustness curve. GATS-R degrades gracefully
+        (0.70→0.63→0.60); LQR is near-flat; learned baselines sit at zero.</figcaption></figure>
+    <figure><img src="assets/fig06_ablation.png" alt="Ablation panels"/>
+      <figcaption><b>Figure 7.</b> Ablations. Removing the layered L1 collapses success and return;
+        removing CBF removes interventions (and lifts reward).</figcaption></figure>
+  </div>
+  <div class="fig-2">
+    <figure><img src="assets/fig02_return_vs_ood.png" alt="Return vs OOD level"/>
+      <figcaption><b>Figure 8.</b> Episode return vs OOD. The analytic L1 / GATS-R band sits far
+        above the learned baselines across all perturbation levels.</figcaption></figure>
+    <figure><img src="assets/fig00_demo_episode.png" alt="Single GATS-R demo episode trace"/>
+      <figcaption><b>Figure 9.</b> A single GATS-R episode (OOD = 0.5): cart position reaching each
+        goal, pole angle held inside the fall wedge, recovery/OOD shading.</figcaption></figure>
+  </div>
+</div></section>
+
+<!-- ===================== G1 RESULTS ===================== -->
+<section class="alt"><div class="wrap">
+  <p class="sec-kicker">Isaac Lab · Unitree G1</p>
+  <h2 class="narrow">The safety machinery activates on real humanoid physics</h2>
+  <p class="narrow">Isaac&nbsp;Sim&nbsp;5.x, <code class="inl">Isaac-Velocity-Rough-G1-v0</code>,
+    16 envs × 3 episodes × 150 steps, dual RTX&nbsp;5090. The L2 model is deliberately under-trained
+    (512 random transitions) to keep the smoke run minutes, not GPU-hours.</p>
+
+  <div class="tbl"><table>
+    <thead><tr><th>Method</th><th>Return</th><th>CBF&nbsp;interv./ep</th><th>Recovery&nbsp;att./ep</th>
+      <th>Recovery&nbsp;succ.</th><th>Time-to-rec.</th><th>Plan&nbsp;ms</th></tr></thead>
+    <tbody>
+      <tr class="bad"><td>random</td><td>−4.82</td><td>0</td><td>0</td><td>—</td><td>—</td><td>0.0</td></tr>
+      <tr class="bad"><td>MPPI</td><td>−3.49</td><td>0</td><td>0</td><td>—</td><td>—</td><td>~5</td></tr>
+      <tr class="bad"><td>GATS-R — no recovery</td><td>−3.49</td><td>0</td><td>0</td><td>—</td><td>—</td><td>~5</td></tr>
+      <tr class="hi"><td><b>GATS-R (full)</b></td><td>−3.99</td><td>16.2</td><td>1.42</td><td class="good">91.2%</td><td>~14</td><td>5.0</td></tr>
+    </tbody>
+  </table></div>
+  <figcaption style="margin-top:-8px"><b>Table 2.</b> Only the full GATS-R configuration triggers the
+    CBF and recovery dispatcher; the ablations are otherwise bit-identical to plain MPPI — confirming
+    no spurious activation path. Planning fits the 20&nbsp;ms control budget at 5&nbsp;ms/decision.
+    <b>Every number here reproduces bit-identically from a fresh clone on the rig</b>
+    (only the wall-clock <code class="inl">planning_ms</code> column varies).</figcaption>
+
+  <div class="callout narrow"><span class="h">Honest scope</span> Success rate is 0 for everyone on
+    the G1 — the under-trained L2 cannot keep a humanoid upright on rough terrain for 150 steps, and
+    we claim nothing else. The result is that <em>the full closed loop runs on real humanoid physics
+    and every layer measurably fires.</em></div>
+</div></section>
+
+<!-- ===================== LIMITATIONS ===================== -->
+<section><div class="wrap narrow">
+  <p class="sec-kicker">Threats to validity</p>
+  <h2>What this is — and what it is not</h2>
+  <p>This is a <strong>concept-validation reference implementation</strong>, scoped honestly:</p>
+  <ul>
+    <li><strong>Under-trained L2.</strong> 2000 (CPU) / 512 (G1) random transitions — orders of
+      magnitude below what a competitive policy needs. The learned baselines fail for this reason.</li>
+    <li><strong>One G1 task, no hardware.</strong> A CoRL/RSS-grade result needs ~10 tasks, ≥5 seeds,
+      paired tests, and real-robot transfer.</li>
+    <li><strong>Placeholder recovery on the G1.</strong> A PD stand-up, not a trained FRASA/FIRM
+      policy — the 91.2% reflects mild stumbles.</li>
+    <li><strong>Determinism is per-machine.</strong> Substantive metrics are bit-reproducible on a
+      given machine; cross-machine float kernels differ slightly.</li>
+  </ul>
+  <p>The contribution is the clean, inspectable, end-to-end integration with matching metrics — a
+    credible baseline the next team can lift TD-MPC2 / DreamerV3 / FRASA into, module by module.</p>
+</div></section>
+
+<!-- ===================== REPRODUCE ===================== -->
+<section id="repro" class="alt"><div class="wrap narrow">
+  <p class="sec-kicker">Reproducibility</p>
+  <h2>From a fresh clone to verified claims</h2>
+<pre><span class="c"># works under NumPy 1.x and 2.x</span>
+git clone https://github.com/MMWilliams/gats-r.git
+cd gats-r &amp;&amp; pip install -r requirements.txt &amp;&amp; pip install -e .
+
+<span class="g">pytest -q</span>                          <span class="c"># 59 tests, ~4 s</span>
+<span class="g">python scripts/verify_claims.py</span>          <span class="c"># asserts every CPU finding, ~2 min</span>
+<span class="g">python scripts/benchmark.py --seeds 3 --episodes 10</span>   <span class="c"># Table 1, ~45 min</span>
+<span class="g">python scripts/make_figures.py</span>            <span class="c"># Figures 6–9</span>
+
+<span class="c"># Isaac Lab + Unitree G1 (needs Isaac Sim 5.x + CUDA GPU):</span>
+scripts\run_isaaclab.bat scripts\isaaclab_benchmark.py ^
+    --task Isaac-Velocity-Rough-G1-v0 --num_envs 16 --episodes 3 ^
+    --max_steps 150 --train_steps 512 ^
+    --methods random mppi gatsr_no_rec gatsr_full
+<span class="g">python scripts/verify_isaaclab_claims.py</span>   <span class="c"># asserts Table 2</span></pre>
+  <p style="text-align:center;margin-top:24px">
+    <a class="tag cy" style="display:inline-block;padding:12px 22px;font-size:15px"
+       href="https://github.com/MMWilliams/gats-r">★ View the repository on GitHub →</a></p>
+</div></section>
+
+<footer><div class="wrap">
+  <div class="two">
+    <div>
+      <h4>GATS-R</h4>
+      <p>Graph-Augmented, Layered-World-Model RL with Graph-Indexed Recovery. A reproducible reference
+        implementation for model-based robot agents — CPU BalanceBot &amp; Isaac-Lab Unitree&nbsp;G1.</p>
+      <p><a href="https://github.com/MMWilliams/gats-r">github.com/MMWilliams/gats-r</a></p>
+      <p style="color:#5b6885;font-size:13px">M. M. Williams · 2026 · Implementation, port, and report
+        assisted by Claude Opus.</p>
+    </div>
+    <div>
+      <h4 style="font-size:14px">Selected references</h4>
+      <p class="ref">
+        Hansen et al. — <em>TD-MPC2</em> (ICLR 2024) ·
+        Hafner et al. — <em>DreamerV3</em> ·
+        Agia et al. — <em>Sentinel</em> (CoRL 2024) ·
+        Yang et al. — <em>CBF-RL</em> (2025) ·
+        Savinov et al. — <em>SPTM</em> ·
+        Zhang et al. — <em>World Model as a Graph</em> ·
+        Lim et al. — <em>Voronoi Progressive Widening</em> ·
+        Xu et al. — <em>FIRM</em> · NVIDIA — <em>Isaac Lab</em>.
+      </p>
+    </div>
+  </div>
+</div></footer>
+
+</body>
+</html>
